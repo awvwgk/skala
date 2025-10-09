@@ -1,0 +1,21 @@
+name: skala
+channels:
+  - conda-forge
+dependencies:
+- ase
+- azure-core
+- azure-identity
+- dftd3-python
+- e3nn
+- numpy
+- opt_einsum_fx
+- pyscf <2.10.0
+- python
+- pytorch * cpu_*
+- qcelemental
+# Testing and development
+- pre-commit
+- pytest
+- pytest-cov
+- pip:
+  - huggingface_hub

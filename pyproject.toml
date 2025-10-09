@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "microsoft-skala"
+version = "1.0.0"
+description = "Skala Exchange Correlation Functional"
+authors = []
+license-files = ["LICENSE.txt"]
+readme = "README.md"
+keywords = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Development Status :: 5 - Production/Stable",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "ase",
+    "azure-core",
+    "azure-identity",
+    "dftd3",
+    "e3nn",
+    "huggingface_hub",
+    "numpy",
+    "opt_einsum_fx",
+    "pyscf<2.10.0",
+    "qcelemental",
+    "torch"
+]
+
+optional-dependencies.dev = [
+    "pre-commit",
+    "pytest",
+    "pytest-cov",
+]
+optional-dependencies.doc = [
+    "myst-nb",
+    "sphinx",
+    "sphinx-book-theme",
+]
+
+urls.repository = "https://github.com/microsoft/skala"
+
+[tool.ruff]
+target-version = "py311"
+src = ["src"]
+
+[tool.ruff.lint]
+extend-select = [
+  "B", # flake8-bugbear
+  "D417", # undocumented-param in docstring
+  "UP", # pyupgrade
+]
+extend-ignore = [
+  "UP015", # redundant-open-modes
+]
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.black]
+line-length = 100
