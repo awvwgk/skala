@@ -1,0 +1,12 @@
+name: skala-cpp-integration
+channels:
+- conda-forge
+dependencies:
+- cmake
+- cxx-compiler
+- ninja
+- nlohmann_json
+- libtorch
+- pytorch  # Only required to produce example features.
+- pip:
+  - microsoft-skala
