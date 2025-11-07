@@ -98,7 +98,10 @@ class SkalaRKS(dft.rks.RKS):
     def density_fit(self, auxbasis=None, with_df=None, only_dfj=True):
         import pyscf.df.df_jk
 
-        xc, self.xc = self.xc, "tpss"  # From PySCF 2.10 the xc needs to be set to a known functional
+        xc, self.xc = (
+            self.xc,
+            "tpss",
+        )  # From PySCF 2.10 the xc needs to be set to a known functional
         ks = pyscf.df.df_jk.density_fit(self, auxbasis, with_df, only_dfj)
         ks.xc = xc
         ks.Gradients = lambda: SkalaRKSGradient(ks)
@@ -143,7 +146,10 @@ class SkalaUKS(dft.uks.UKS):
     def density_fit(self, auxbasis=None, with_df=None, only_dfj=True):
         import pyscf.df.df_jk
 
-        xc, self.xc = self.xc, "tpss"  # From PySCF 2.10 the xc needs to be set to a known functional
+        xc, self.xc = (
+            self.xc,
+            "tpss",
+        )  # From PySCF 2.10 the xc needs to be set to a known functional
         ks = pyscf.df.df_jk.density_fit(self, auxbasis, with_df, only_dfj)
         ks.xc = xc
         ks.Gradients = lambda: SkalaUKSGradient(ks)
