@@ -9,3 +9,5 @@ except ModuleNotFoundError as e:
 
 
 from skala.ase.calculator import Skala  # noqa: F401
+
+__all__ = ["Skala"]

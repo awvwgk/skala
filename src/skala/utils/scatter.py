@@ -54,7 +54,7 @@ def scatter_sum(
         return out.scatter_add_(dim, index, src)
 
 
-def broadcast(src: torch.Tensor, other: torch.Tensor, dim: int):
+def broadcast(src: torch.Tensor, other: torch.Tensor, dim: int) -> torch.Tensor:
     """
     Broadcast src tensor to match the shape of other tensor along specified dimensions.
 

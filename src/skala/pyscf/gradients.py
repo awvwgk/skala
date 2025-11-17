@@ -3,14 +3,16 @@
 """Modification of PySCF nuclear gradient object to work with Skala functional."""
 
 import logging
+from typing import Any
 
 import numpy as np
 import torch
+
 from dftd3.pyscf import DFTD3Dispersion
 from pyscf import dft, gto
 from pyscf.grad.rhf import Gradients as RHFGradient
 from pyscf.grad.rks import grids_noresponse_cc, grids_response_cc
-from pyscf.grad.uhf import Gradients as UHFGradient
+from pyscf.grad.uks import Gradients as UHFGradient
 from pyscf.scf.hf import SCF
 
 import skala.pyscf.features as feature
@@ -88,7 +90,7 @@ def veff_and_expl_nuc_grad(
 
     _, dExc_func = torch.func.vjp(exc_feat_func, *nuc_feat_tensors)
     dExc_tuple = dExc_func(torch.tensor(1.0, dtype=rdm1.dtype))
-    dExc = {}
+    dExc: dict[str, torch.Tensor] = {}
     for i in range(len(dExc_tuple)):
         dExc[nuc_feat_names[i]] = dExc_tuple[i].detach()
 
@@ -221,7 +223,7 @@ def veff_and_expl_nuc_grad(
     return (-veff, nuc_grad)
 
 
-class SkalaRKSGradient(RHFGradient):
+class SkalaRKSGradient(RHFGradient):  # type: ignore[misc]
     functional: ExcFunctionalBase
     """LivDFT functional"""
     nuc_grad_feats: set[str] | None
@@ -244,7 +246,11 @@ class SkalaRKSGradient(RHFGradient):
         self.verbose = verbose
         self.with_dftd3 = getattr(ks, "with_dftd3", None)
 
-    def get_veff(self, mol=None, dm=None):
+    def get_veff(
+        self,
+        mol: gto.Mole | None = None,
+        dm: np.ndarray | None = None,
+    ) -> np.ndarray:
         if mol is None:
             mol = self.mol
         if dm is None:
@@ -262,11 +268,11 @@ class SkalaRKSGradient(RHFGradient):
 
     def grad_elec(
         self,
-        mo_energy: np.ndarray = None,
-        mo_coeff: np.ndarray = None,
-        mo_occ: np.ndarray = None,
-        atmlst=None,
-    ):
+        mo_energy: np.ndarray | None = None,
+        mo_coeff: np.ndarray | None = None,
+        mo_occ: np.ndarray | None = None,
+        atmlst: list[int] | None = None,
+    ) -> np.ndarray:
         if mo_energy is None:
             mo_energy = self.base.mo_energy
         if mo_occ is None:
@@ -278,7 +284,9 @@ class SkalaRKSGradient(RHFGradient):
 
         return grad + (self.veff_nuc_grad_).numpy()
 
-    def grad_nuc(self, mol=None, atmlst=None):
+    def grad_nuc(
+        self, mol: gto.Mole | None = None, atmlst: list[int] | None = None
+    ) -> np.ndarray:
         nuc_g = super().grad_nuc(mol, atmlst)
         if self.with_dftd3 is None:
             return nuc_g
@@ -288,11 +296,11 @@ class SkalaRKSGradient(RHFGradient):
         nuc_g += disp_g
         return nuc_g
 
-    def extra_force(self, atom_id, envs):
+    def extra_force(self, atom_id: int, envs: dict[str, Any]) -> int:
         return 0
 
 
-class SkalaUKSGradient(UHFGradient):
+class SkalaUKSGradient(UHFGradient):  # type: ignore[misc]
     functional: ExcFunctionalBase
     """LivDFT functional"""
     nuc_grad_feats: set[str] | None
@@ -315,7 +323,11 @@ class SkalaUKSGradient(UHFGradient):
         self.verbose = verbose
         self.with_dftd3 = getattr(ks, "with_dftd3", None)
 
-    def get_veff(self, mol=None, dm=None):
+    def get_veff(
+        self,
+        mol: gto.Mole | None = None,
+        dm: np.ndarray | None = None,
+    ) -> np.ndarray:
         if mol is None:
             mol = self.mol
         if dm is None:
@@ -332,11 +344,11 @@ class SkalaUKSGradient(UHFGradient):
 
     def grad_elec(
         self,
-        mo_energy: np.ndarray = None,
-        mo_coeff: np.ndarray = None,
-        mo_occ: np.ndarray = None,
-        atmlst=None,
-    ):
+        mo_energy: np.ndarray | None = None,
+        mo_coeff: np.ndarray | None = None,
+        mo_occ: np.ndarray | None = None,
+        atmlst: list[int] | None = None,
+    ) -> np.ndarray:
         if mo_energy is None:
             mo_energy = self.base.mo_energy
         if mo_occ is None:
@@ -348,7 +360,9 @@ class SkalaUKSGradient(UHFGradient):
 
         return grad + (self.veff_nuc_grad_).numpy()
 
-    def grad_nuc(self, mol=None, atmlst=None):
+    def grad_nuc(
+        self, mol: gto.Mole | None = None, atmlst: list[int] | None = None
+    ) -> np.ndarray:
         nuc_g = super().grad_nuc(mol, atmlst)
         if self.with_dftd3 is None:
             return nuc_g

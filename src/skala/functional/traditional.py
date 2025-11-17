@@ -25,7 +25,7 @@ class SpinScaledXCFunctional(ExcFunctionalBase):
     E_x[ρ_α, ρ_β] = 1/2 * (E_x[2ρ_α] + E_x[2ρ_β])
     """
 
-    def get_d3_settings(self):
+    def get_d3_settings(self) -> str:
         return self.__class__.__name__.lower()
 
     def exchange(self, mol_features: dict[str, Tensor]) -> Tensor:

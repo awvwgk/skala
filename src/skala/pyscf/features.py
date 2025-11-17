@@ -10,8 +10,11 @@ from copy import copy
 
 import numpy as np
 import torch
+from torch import Tensor, nn
+from torch.autograd import Function
+from torch.autograd.function import FunctionCtx
+
 from pyscf import dft, gto
-from torch import Tensor
 
 DEFAULT_FEATURES = ["density", "kin", "grad", "grid_coords", "grid_weights"]
 DEFAULT_FEATURES_SET = set(DEFAULT_FEATURES)
@@ -158,42 +161,46 @@ def partial_feature_function_over_aos(
 
 
 def partial_jvp_function_over_tangents(
-    func: Callable[[torch.Tensor], tuple[torch.Tensor, ...]],
+    func: Callable[[torch.Tensor], torch.Tensor],
     tangents: torch.Tensor,
-):
+) -> Callable[[torch.Tensor], torch.Tensor]:
     """Returns a function that computes the jvp of the given function with tangents,
     but not primals already passed to the function.
 
     Purpose is to allow for chaining of derivatives over primals."""
 
-    def reduced_jvp(primals: torch.Tensor) -> tuple[torch.Tensor, ...]:
-        return torch.func.jvp(func, (primals,), (tangents,))[1]
+    def reduced_jvp(primals: torch.Tensor) -> torch.Tensor:
+        _, tangent = torch.func.jvp(func, (primals,), (tangents,))
+        return tangent
 
     return reduced_jvp
 
 
 def partial_vjp_function_over_tangents(
-    func: Callable[[torch.Tensor], tuple[torch.Tensor, ...]],
+    func: Callable[[torch.Tensor], torch.Tensor],
     tangents: torch.Tensor,
-):
+) -> Callable[[torch.Tensor], torch.Tensor]:
     """Returns a function that computes the vjp of the given function with tangents,
     but not primals already passed to the function.
 
     Purpose is to allow for chaining of derivatives over primals."""
 
-    def reduced_vjp(primals: torch.Tensor) -> tuple[torch.Tensor, ...]:
+    def reduced_vjp(primals: torch.Tensor) -> torch.Tensor:
         return torch.func.vjp(func, primals)[1](tangents)[0]
 
     return reduced_vjp
 
 
-class FeatureFunction(torch.nn.Module, ABC):
+class FeatureFunction(nn.Module, ABC):  # type: ignore[misc]
     deriv: int
     nfeats: int
     only_linear_feats: bool
 
     @abstractmethod
     def forward(self, dm: torch.Tensor, ao: torch.Tensor) -> torch.Tensor: ...
+
+    @abstractmethod
+    def to_dict(self, features: torch.Tensor) -> dict[str, torch.Tensor]: ...
 
 
 class MGGAFeatureFunction(FeatureFunction):
@@ -245,7 +252,7 @@ class MGGAFeatureFunction(FeatureFunction):
     def to_dict(self, features: torch.Tensor) -> dict[str, torch.Tensor]:
         """Convert the features to a dictionary with the keys being the feature names."""
         feature_index = 0
-        feature_dict = {}
+        feature_dict: dict[str, torch.Tensor] = {}
         if self.with_density:
             feature_dict["density"] = features[..., feature_index, :]
             feature_index += 1
@@ -380,10 +387,10 @@ class MGGAFeatureFunction(FeatureFunction):
             return features.reshape((*dm.shape[:-2], self.nfeats, -1))
 
 
-class ChunkEvalForward(torch.autograd.Function):
+class ChunkEvalForward(Function):  # type: ignore[misc]
     @staticmethod
     def setup_context(
-        ctx,
+        ctx: FunctionCtx,
         inputs: tuple[
             torch.Tensor,
             gto.Mole,
@@ -396,7 +403,7 @@ class ChunkEvalForward(torch.autograd.Function):
             torch.Tensor,
         ],
         output: torch.Tensor,
-    ):
+    ) -> None:
         (
             ctx.dm,
             ctx.mol,
@@ -431,7 +438,7 @@ class ChunkEvalForward(torch.autograd.Function):
             device=dm.device,
             dtype=dm.dtype,
         )
-        if len(vectors_jvp) > 1 and features.only_linear_feats:
+        if len(vectors_jvp) > 1 and feature_function.only_linear_feats:
             return features
 
         end = 0
@@ -468,7 +475,7 @@ class ChunkEvalForward(torch.autograd.Function):
         return features
 
     @staticmethod
-    def jvp(ctx, grad_input: torch.Tensor) -> torch.Tensor:
+    def jvp(ctx: FunctionCtx, grad_input: torch.Tensor) -> torch.Tensor:
         # Chain rule for the jvp
         return ChunkEvalForward.apply(
             ctx.dm,
@@ -482,7 +489,9 @@ class ChunkEvalForward(torch.autograd.Function):
         )
 
     @staticmethod
-    def backward(ctx, grad_output: torch.Tensor):
+    def backward(
+        ctx: FunctionCtx, grad_output: torch.Tensor
+    ) -> tuple[torch.Tensor | None, ...]:
         # After one vjp (backward) the signature of the function changes from dm.shape -> (*dm.shape[:-2], nfeats, ngrid) to dm.shape -> dm.shape
         # therefore we move to a different function that does essentially the same thing, but with the new signature
 
@@ -529,10 +538,10 @@ class ChunkEvalForward(torch.autograd.Function):
         return tuple(grads)
 
 
-class ChunkEvalBackward(torch.autograd.Function):
+class ChunkEvalBackward(Function):  # type: ignore[misc]
     @staticmethod
     def setup_context(
-        ctx,
+        ctx: FunctionCtx,
         inputs: tuple[
             torch.Tensor,
             gto.Mole,
@@ -544,7 +553,7 @@ class ChunkEvalBackward(torch.autograd.Function):
             torch.Tensor,
         ],
         output: tuple[torch.Tensor, ...],
-    ):
+    ) -> None:
         (
             ctx.dm,
             ctx.mol,
@@ -633,7 +642,7 @@ class ChunkEvalBackward(torch.autograd.Function):
         return out[..., unsort_idx, :][..., unsort_idx]
 
     @staticmethod
-    def jvp(ctx, *grad_input: torch.Tensor) -> torch.Tensor:
+    def jvp(ctx: FunctionCtx, *grad_input: torch.Tensor) -> torch.Tensor:
         # Chain rule for the jvp
         return ChunkEvalBackward.apply(
             ctx.dm,
@@ -648,7 +657,9 @@ class ChunkEvalBackward(torch.autograd.Function):
         )
 
     @staticmethod
-    def backward(ctx, grad_output: torch.Tensor):
+    def backward(
+        ctx: FunctionCtx, grad_output: torch.Tensor
+    ) -> tuple[torch.Tensor | None, ...]:
         # Chain rule for the vjp
 
         # Gradient corresponding to dm
@@ -725,7 +736,7 @@ def non_chunk(
     if compile_feature_function:
         return torch.compile(feature_function.forward)(dm, ao.transpose(-1, -2))
     else:
-        return feature_function(dm, ao.transpose(-1, -2))
+        return feature_function.forward(dm, ao.transpose(-1, -2))
 
 
 def auto_chunk(
@@ -777,6 +788,7 @@ def auto_chunk(
         computed in smaller chunks or in a single pass, depending on the block size.
     """
 
+    blksize: int | None
     if block_size is None and fix_block_size:
         comp = (
             (feature_function.deriv + 1)
@@ -789,7 +801,7 @@ def auto_chunk(
         blksize = int(max_memory_cpu * 1e6 / ((comp + 1) * nao * 8 * BLKSIZE))
         blksize = max(4, min(blksize, 1200)) * BLKSIZE
     else:
-        blksize = block_size  # type: ignore
+        blksize = block_size
 
     if blksize is not None:
         blksize = blksize - blksize % dft.gen_grid.BLKSIZE

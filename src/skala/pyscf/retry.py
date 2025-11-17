@@ -8,12 +8,19 @@ calculations in PySCF, allowing for robust convergence handling.
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
+
 from pyscf.scf.hf import SCF
 from pyscf.soscf.newton_ah import _CIAH_SOSCF
 
 SMALL_GAP = 0.1
+
+
+def _min_gap(gaps: list[float | None]) -> float | None:
+    finite_gaps = [gap for gap in gaps[2:-1] if gap is not None]
+    return min(finite_gaps) if finite_gaps else None
 
 
 @dataclass
@@ -45,7 +52,7 @@ class SCFState:
         scf.callback = self.post_cycle_callback
         scf.post_kernel = self.post_kernel_callback
 
-    def pre_kernel_callback(self, envs: dict) -> None:
+    def pre_kernel_callback(self, envs: dict[str, Any]) -> None:
         scf: SCF = envs["mf"]
         e_tot = envs["e_tot"]
 
@@ -58,7 +65,7 @@ class SCFState:
         self.homo_lumo_gap_up_per_cycle = [None]
         self.homo_lumo_gap_down_per_cycle = [None]
 
-    def post_cycle_callback(self, envs: dict) -> None:
+    def post_cycle_callback(self, envs: dict[str, Any]) -> None:
         scf: SCF = envs["mf"]
         e_tot = envs["e_tot"]
         norm_gorb = envs["norm_gorb"]
@@ -99,31 +106,17 @@ class SCFState:
             self.homo_lumo_gap_up_per_cycle.append(gap[0])
             self.homo_lumo_gap_down_per_cycle.append(gap[1])
 
-    def post_kernel_callback(self, envs: dict) -> None:
+    def post_kernel_callback(self, envs: dict[str, Any]) -> None:
         scf: SCF = envs["mf"]
 
         if scf.conv_check:
             envs["cycle"] += 1
             scf.callback(envs)
 
-    def get_gap(self) -> tuple[float, float]:
+    def get_gap(self) -> tuple[float | None, float | None]:
         return (
-            min(
-                [
-                    gap
-                    for gap in self.homo_lumo_gap_up_per_cycle[2:-1]
-                    if gap is not None
-                ],
-                default=None,  # type: ignore
-            ),
-            min(
-                [
-                    gap
-                    for gap in self.homo_lumo_gap_down_per_cycle[2:-1]
-                    if gap is not None
-                ],
-                default=None,  # type: ignore
-            ),
+            _min_gap(self.homo_lumo_gap_up_per_cycle),
+            _min_gap(self.homo_lumo_gap_down_per_cycle),
         )
 
 
@@ -155,7 +148,7 @@ def retry_scf(
     if isinstance(scf, _CIAH_SOSCF):
         return scf, state
 
-    init_config = {
+    init_config: dict[str, float | int] = {
         "damp": scf.damp,
         "diis_start_cycle": scf.diis_start_cycle,
     }

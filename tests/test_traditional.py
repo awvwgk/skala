@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: MIT
 
 import pytest
-from pyscf import dft, gto
 from pytest import approx
+
+from pyscf import dft, gto
 
 from skala.functional import ExcFunctionalBase, load_functional
 from skala.pyscf import SkalaKS

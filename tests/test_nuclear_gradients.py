@@ -2,6 +2,7 @@ from collections.abc import Callable
 
 import pytest
 import torch
+
 from pyscf import dft, gto, scf
 
 from skala.functional import load_functional

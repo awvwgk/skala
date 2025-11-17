@@ -3,6 +3,7 @@ import logging
 import time
 import urllib.request
 import uuid
+from typing import Any
 
 import qcelemental as qcel
 from azure.core.credentials import TokenCredential
@@ -70,8 +71,8 @@ class SkalaFoundryClient:
         self._request(data, deployment_header=deployment_header)
 
     def _request(
-        self, data: dict, *, deployment_header: str | None = None
-    ) -> tuple[dict, str | None]:
+        self, data: dict[str, Any], *, deployment_header: str | None = None
+    ) -> tuple[dict[str, Any], str | None]:
         scope = "https://ml.azure.com"
         if isinstance(self._credential, str):
             token = self._credential

@@ -8,6 +8,7 @@ for implementing exchange-correlation functionals in Skala.
 """
 
 from collections.abc import Callable
+from typing import Any
 
 import torch
 from torch import nn
@@ -15,7 +16,7 @@ from torch import nn
 VxcType = tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]
 
 
-class ExcFunctionalBase(nn.Module):
+class ExcFunctionalBase(nn.Module):  # type: ignore[misc]
     """
     Abstract base class for exchange-correlation functionals.
 
@@ -71,7 +72,7 @@ def spin_symmetrized_enhancement_factor(
     tensor_b: torch.Tensor,
     spin_agnostic_tensor: torch.Tensor,
     enhancement_func: Callable[..., torch.Tensor],
-    **kwargs,
+    **kwargs: Any,
 ) -> torch.Tensor:
     """
     Apply spin symmetrization to an enhancement factor function.

@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: MIT
 
 import pytest
+
 from pyscf import dft, gto
 from pyscf.soscf.newton_ah import _CIAH_SOSCF
 

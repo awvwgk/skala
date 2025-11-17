@@ -8,5 +8,17 @@ repos:
       # Run the linter.
       - id: ruff
         args: [--fix, --select, I]
+        exclude: '^(third_party)/.*'
       # Run the formatter.
       - id: ruff-format
+        exclude: '^(third_party)/.*'
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.16.1
+    hooks:
+      - id: mypy
+        exclude: '^(third_party|tests)/.*'
+        args:
+          - --ignore-missing-imports
+          - --no-namespace-packages
+          - --python-version=3.11
+        entry: mypy

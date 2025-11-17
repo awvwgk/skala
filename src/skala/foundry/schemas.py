@@ -16,13 +16,13 @@ BasisOptions: TypeAlias = Literal["def2-svp", "def2-tzvp", "def2-qzvp", "ma-def2
 TaskState: TypeAlias = Literal["succeeded", "failed", "running", "queued", "canceled"]
 
 
-class SkalaConfig(BaseModel):
+class SkalaConfig(BaseModel):  # type: ignore[misc]
     basis: BasisOptions = "def2-qzvp"
     grid_level: GridLevelOptions = "ultrafine"
     max_num_scf_steps: int = 100
 
 
-class Molecule(BaseModel):
+class Molecule(BaseModel):  # type: ignore[misc]
     """Molecule representation based on qcelemental's Molecule model."""
 
     geometry: list[float] = Field(
@@ -59,12 +59,12 @@ class Molecule(BaseModel):
         )
 
 
-class SkalaInput(BaseModel):
+class SkalaInput(BaseModel):  # type: ignore[misc]
     molecule: Molecule
     input_config: SkalaConfig = Field(default_factory=SkalaConfig)
 
 
-class SkalaOutput(BaseModel):
+class SkalaOutput(BaseModel):  # type: ignore[misc]
     total_energy: float
     energy_breakdown: dict[str, float] = Field(
         default_factory=dict,
@@ -76,7 +76,7 @@ class SkalaOutput(BaseModel):
     )
 
 
-class TaskStatus(BaseModel):
+class TaskStatus(BaseModel):  # type: ignore[misc]
     status: TaskState
     num_tasks_ahead: int
     exception: str | None = None

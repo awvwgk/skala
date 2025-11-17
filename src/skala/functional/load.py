@@ -5,8 +5,9 @@ Tools to load functionals from serialized torchscript checkpoints.
 """
 
 import json
+import os
 from collections.abc import Iterable, Mapping
-from typing import Any
+from typing import IO, Any, cast
 
 import torch
 
@@ -61,10 +62,22 @@ class TracedFunctional(ExcFunctionalBase):
 
     @property
     def original_name(self) -> str:
-        return self._traced_model.original_name
+        if not hasattr(self._traced_model, "original_name"):
+            raise RuntimeError(
+                "The traced model does not have an 'original_name' attribute."
+            )
+        if not isinstance(original_name := self._traced_model.original_name, str):
+            raise RuntimeError(
+                "The 'original_name' attribute of the traced model is not a string."
+            )
+        return original_name
 
     @classmethod
-    def load(cls, fp, device: torch.device | None = None):
+    def load(
+        cls,
+        fp: str | bytes | os.PathLike[str] | IO[bytes],
+        device: torch.device | None = None,
+    ) -> "TracedFunctional":
         extra_files = {
             "metadata": b"",
             "features": b"",
@@ -74,12 +87,49 @@ class TracedFunctional(ExcFunctionalBase):
 
         traced_model = torch.jit.load(fp, _extra_files=extra_files, map_location=device)
 
-        metadata = json.loads(extra_files["metadata"].decode("utf-8"))
-        features = json.loads(extra_files["features"].decode("utf-8"))
-        protocol_version = json.loads(extra_files["protocol_version"].decode("utf-8"))
-        expected_d3_settings = json.loads(
-            extra_files["expected_d3_settings"].decode("utf-8")
-        )
+        _metadata = json.loads(extra_files["metadata"].decode("utf-8"))
+        if not isinstance(_metadata, dict):
+            raise RuntimeError(
+                "metadata in traced functional extra_files does not have the correct format (dict)."
+            )
+        if not all([isinstance(key, str) for key in _metadata]):
+            raise RuntimeError("metadata keys in traced functional must be strings.")
+        metadata = cast(dict[str, Any], _metadata)
+
+        _features = json.loads(extra_files["features"].decode("utf-8"))
+        if not isinstance(_features, list):
+            raise RuntimeError(
+                "features in traced functional extra_files does not have the correct format (list)."
+            )
+        if not all([isinstance(feat, str) for feat in _features]):
+            raise RuntimeError(
+                "features in traced functional must be a list of strings."
+            )
+        features = cast(list[str], _features)
+
+        if not isinstance(
+            (
+                protocol_version := json.loads(
+                    extra_files["protocol_version"].decode("utf-8")
+                )
+            ),
+            int,
+        ):
+            raise RuntimeError(
+                "protocol_version in traced functional extra_files must be an integer."
+            )
+
+        if not isinstance(
+            (
+                expected_d3_settings := json.loads(
+                    extra_files["expected_d3_settings"].decode("utf-8")
+                )
+            ),
+            (str, type(None)),
+        ):
+            raise RuntimeError(
+                "expected_d3_settings in traced functional extra_files must be a string or None."
+            )
 
         if protocol_version != PROTOCOL_VERSION:
             raise RuntimeError(

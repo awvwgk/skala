@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: MIT
 
 from collections.abc import Callable
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 import torch
-from pyscf import dft, gto
 from torch import Tensor
+
+from pyscf import dft, gto
 
 from skala.functional.base import ExcFunctionalBase
 from skala.pyscf.features import generate_features
@@ -63,8 +64,8 @@ class PySCFNumInt(Protocol):
         mo_occ: np.ndarray | None,
         *,
         ks: dft.rks.RKS | dft.uks.UKS,
-        **kwargs: dict,
-    ):
+        **kwargs: Any,
+    ) -> Callable[[np.ndarray], np.ndarray]:
         """Generates the response function for the functional."""
         ...
 
@@ -200,7 +201,7 @@ class SkalaNumInt(PySCFNumInt):
         mo_occ: np.ndarray | None,
         *,
         ks: dft.rks.RKS | dft.uks.UKS,
-        **kwargs: dict,
+        **kwargs: Any,
     ) -> Callable[[np.ndarray], np.ndarray]:
         assert mo_coeff is not None
         assert mo_occ is not None
@@ -219,9 +220,13 @@ class SkalaNumInt(PySCFNumInt):
         V_xc = self(ks.mol, ks.grids, None, dm0, second_order=True)[2]
 
         def hessian_vector_product(dm1: np.ndarray) -> np.ndarray:
-            v1 = torch.autograd.grad(
-                V_xc, dm0, torch.from_numpy(dm1), retain_graph=True
-            )[0]
+            v1 = (
+                torch.autograd.grad(
+                    V_xc, dm0, torch.from_numpy(dm1), retain_graph=True
+                )[0]
+                .detach()
+                .numpy()
+            )
             vj = ks.get_j(ks.mol, dm1, hermi=1)
 
             if ks.mol.spin == 0:

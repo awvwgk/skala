@@ -8,11 +8,13 @@ of neural exchange-correlation functionals, including squashing functions,
 skip connections, and scaled activations.
 """
 
+from typing import Any
+
 import torch
 from torch import nn
 
 
-class Squasher(nn.Module):
+class Squasher(nn.Module):  # type: ignore[misc]
     """
     Elementwise squashing function log(|x| + eta).
 
@@ -27,12 +29,12 @@ class Squasher(nn.Module):
         super().__init__()
         self.eta = eta
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Apply squashing function log(|x| + eta)."""
         return (x.abs() + self.eta).log()
 
 
-class LinearSkip(nn.Linear):
+class LinearSkip(nn.Linear):  # type: ignore[misc]
     """
     Linear layer with skip connection, used to initialize close to identity.
 
@@ -40,7 +42,7 @@ class LinearSkip(nn.Linear):
     where W is initialized to small values around zero.
     """
 
-    def __init__(self, in_features: int, out_features: int, **kwargs) -> None:
+    def __init__(self, in_features: int, out_features: int, **kwargs: Any):
         """
         Initialize linear skip layer.
 
@@ -59,7 +61,7 @@ class LinearSkip(nn.Linear):
         ), f"Expecting args in_features == out_features, got {in_features} != {out_features}."
         self._init_weights()
 
-    def _init_weights(self):
+    def _init_weights(self) -> None:
         """Initialize weights to be close to the identity transformation."""
         nn.init.trunc_normal_(
             self.weight.data, mean=0.0, std=0.0625, a=-0.125, b=0.125
@@ -70,7 +72,7 @@ class LinearSkip(nn.Linear):
         return input + nn.functional.linear(input, self.weight, self.bias)
 
 
-class ScaledSigmoid(nn.Sigmoid):
+class ScaledSigmoid(nn.Sigmoid):  # type: ignore[misc]
     """
     Sigmoid activation function with learnable scaling.
 

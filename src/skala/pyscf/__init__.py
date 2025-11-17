@@ -15,6 +15,8 @@ except ModuleNotFoundError as e:
         "PySCF is not installed. Please install it with `pip install pyscf` or `conda install pyscf`."
     ) from e
 
+from typing import Any
+
 from pyscf import gto
 
 from skala.functional import ExcFunctionalBase, load_functional
@@ -29,8 +31,8 @@ def SkalaKS(
     with_newton: bool = False,
     with_dftd3: bool = True,
     auxbasis: str | None = None,
-    ks_config: dict | None = None,
-    soscf_config: dict | None = None,
+    ks_config: dict[str, Any] | None = None,
+    soscf_config: dict[str, Any] | None = None,
 ) -> dft.SkalaRKS | dft.SkalaUKS:
     """
     Create a Kohn-Sham calculator for the Skala functional.
@@ -111,8 +113,8 @@ def SkalaRKS(
     with_newton: bool = False,
     with_dftd3: bool = True,
     auxbasis: str | None = None,
-    ks_config: dict | None = None,
-    soscf_config: dict | None = None,
+    ks_config: dict[str, Any] | None = None,
+    soscf_config: dict[str, Any] | None = None,
 ) -> dft.SkalaRKS:
     """
     Create a restricted Kohn-Sham calculator for the Skala functional.
@@ -185,8 +187,8 @@ def SkalaUKS(
     with_newton: bool = False,
     with_dftd3: bool = True,
     auxbasis: str | None = None,
-    ks_config: dict | None = None,
-    soscf_config: dict | None = None,
+    ks_config: dict[str, Any] | None = None,
+    soscf_config: dict[str, Any] | None = None,
 ) -> dft.SkalaUKS:
     """
     Create an unrestricted Kohn-Sham calculator for the Skala functional.

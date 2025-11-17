@@ -126,7 +126,7 @@ class SkalaFunctional(ExcFunctionalBase):
             enhancement_factor=enhancement_factor, density=mol["density"]
         )
 
-    def reset_parameters(self):
+    def reset_parameters(self) -> None:
         for layer in self.input_model:
             if isinstance(layer, nn.Linear):
                 torch.nn.init.xavier_uniform_(layer.weight)
@@ -142,7 +142,7 @@ class SkalaFunctional(ExcFunctionalBase):
         return self.input_model[0].weight.dtype
 
 
-class NonLocalModel(nn.Module):
+class NonLocalModel(nn.Module):  # type: ignore[misc]
     def __init__(
         self,
         input_nf: int,
@@ -201,7 +201,7 @@ class NonLocalModel(nn.Module):
         grid_coords: torch.Tensor,
         coarse_coords: torch.Tensor,
         grid_weights: torch.Tensor,
-    ) -> tuple[torch.Tensor, torch.Tensor]:
+    ) -> torch.Tensor:
         h = self.pre_down_layer(h)  # (num_fine, hidden_nf)
 
         directions, distances = vect_cdist(grid_coords, coarse_coords)
@@ -311,10 +311,10 @@ class NonLocalModel(nn.Module):
         return self.pre_down_layer[0].weight.dtype
 
 
-def vect_cdist(c1: torch.Tensor, c2: torch.Tensor) -> torch.Tensor:
-    dir = c1[:, None] - c2[None, :]
-    dist = (dir**2 + 1e-20).sum(-1) ** 0.5
-    return dir / dist[:, :, None], dist
+def vect_cdist(c1: torch.Tensor, c2: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+    direction = c1[:, None] - c2[None, :]
+    dist = (direction**2 + 1e-20).sum(-1).sqrt()
+    return direction / dist[:, :, None], dist
 
 
 def exp_radial_func(dist: torch.Tensor, num_basis: int, dim: int = 3) -> torch.Tensor:
@@ -356,7 +356,7 @@ def normalization_envelope(r: torch.Tensor, cutoff: float) -> torch.Tensor:
     return 1 - torch.where(r < 0.5, 2 * r**2, -2 * r**2 + 4 * r - 1)
 
 
-class TensorProduct(nn.Module):
+class TensorProduct(nn.Module):  # type: ignore[misc]
     optimize_einsums = True
     script_codegen = True
 
@@ -409,7 +409,7 @@ class TensorProduct(nn.Module):
         self.reset_parameters()
         self._sparse_tp = self.generate_sparse_tp_code()
 
-    def generate_sparse_tp_code(self):
+    def generate_sparse_tp_code(self) -> fx.GraphModule:
         graphmod = _sparse_tensor_product_codegen(*self.tp_params)
 
         if self.optimize_einsums:
@@ -430,7 +430,15 @@ class TensorProduct(nn.Module):
         return graphmod
 
     @property
-    def tp_params(self):
+    def tp_params(
+        self,
+    ) -> tuple[
+        list[tuple[int, int, int]],
+        list[tuple[int, int, int]],
+        list[tuple[int, int, int]],
+        list[tuple[int, int, int]],
+        list[list[tuple[int, int]]],
+    ]:
         return (
             self.instr,
             convert_irreps(self.irreps_in1),
@@ -439,10 +447,10 @@ class TensorProduct(nn.Module):
             [[(ss.start, ss.stop) for ss in s] for s in self.slices],
         )
 
-    def reset_parameters(self):
+    def reset_parameters(self) -> None:
         def num_elements(ins: tuple[int, int, int]) -> int:
             # assuming uvw connectivity
-            return self.irreps_in1[ins[0]].mul * self.irreps_in2[ins[1]].mul
+            return int(self.irreps_in1[ins[0]].mul * self.irreps_in2[ins[1]].mul)
 
         self.xs = []
         for ins in self.instr:
@@ -454,14 +462,14 @@ class TensorProduct(nn.Module):
             getattr(self, f"weight_{i_1}_{i_2}_{i_out}").data.uniform_(-x, x)
 
     @property
-    def weight_list(self):
+    def weight_list(self) -> list[torch.Tensor]:
         return [
             getattr(self, f"weight_{i_1}_{i_2}_{i_out}")
             for i_1, i_2, i_out in self.instr
         ]
 
     @property
-    def w3j_list(self):
+    def w3j_list(self) -> list[torch.Tensor]:
         return [
             getattr(self, f"w3j_{i_1}_{i_2}_{i_out}") for i_1, i_2, i_out in self.instr
         ]
