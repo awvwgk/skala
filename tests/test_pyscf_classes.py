@@ -1,5 +1,4 @@
 import pytest
-
 from pyscf import gto
 
 from skala.pyscf import SkalaKS

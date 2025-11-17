@@ -10,11 +10,10 @@ from copy import copy
 
 import numpy as np
 import torch
+from pyscf import dft, gto
 from torch import Tensor, nn
 from torch.autograd import Function
 from torch.autograd.function import FunctionCtx
-
-from pyscf import dft, gto
 
 DEFAULT_FEATURES = ["density", "kin", "grad", "grid_coords", "grid_weights"]
 DEFAULT_FEATURES_SET = set(DEFAULT_FEATURES)

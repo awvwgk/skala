@@ -7,7 +7,6 @@ from typing import Any
 
 import numpy as np
 import torch
-
 from dftd3.pyscf import DFTD3Dispersion
 from pyscf import dft, gto
 from pyscf.grad.rhf import Gradients as RHFGradient

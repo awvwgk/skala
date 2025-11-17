@@ -12,7 +12,6 @@ from ase.calculators.calculator import (
     all_changes,
 )
 from ase.units import Bohr, Debye, Hartree
-
 from pyscf import grad, gto
 
 from skala.functional.base import ExcFunctionalBase

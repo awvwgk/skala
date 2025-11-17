@@ -54,7 +54,6 @@ from collections.abc import Callable
 from typing import Any, cast
 
 import numpy as np
-
 from dftd3.pyscf import DFTD3Dispersion
 from pyscf import dft, gto
 from pyscf.df import df_jk

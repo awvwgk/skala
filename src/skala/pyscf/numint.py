@@ -5,9 +5,8 @@ from typing import Any, Protocol
 
 import numpy as np
 import torch
-from torch import Tensor
-
 from pyscf import dft, gto
+from torch import Tensor
 
 from skala.functional.base import ExcFunctionalBase
 from skala.pyscf.features import generate_features

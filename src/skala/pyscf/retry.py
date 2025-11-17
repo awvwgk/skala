@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-
 from pyscf.scf.hf import SCF
 from pyscf.soscf.newton_ah import _CIAH_SOSCF
 
