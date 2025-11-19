@@ -2,7 +2,7 @@ name: Docs
 
 on:
   push:
-    branches: [main]
+    branches: [main, gauxc-docs-bld]
   workflow_dispatch:
 
 permissions:
