@@ -16,7 +16,7 @@ Skala is a neural network-based exchange-correlation (XC) functional for density
 | `docs/` | Sphinx documentation (RST + Jupyter notebooks via myst-nb) |
 | `examples/` | Usage examples (Python scripts and C++ integrations) |
 | `third_party/gauxc/` | Vendored GauXC library with Skala support |
-| `.github/workflows/` | CI workflows (test, docs, wheel builds) |
+| `.github/workflows/` | CI workflows (test, docs) |
 
 ## Development environment
 
