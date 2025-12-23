@@ -33,9 +33,15 @@ If you prefer to install Skala from the source code, you can clone the repositor
 
    git clone https://github.com/microsoft/skala
    cd skala
-   mamba env create -n skala -f environment.yml
+   mamba env create -n skala -f environment-cpu.yml
    mamba activate skala
    pip install -e .
+
+where `environment-cpu.yml` can be replaced for `environment-gpu.yml` for gpu support (CUDA 12) with gpu4pyscf, in which case gpu4pyscf needs to be separately installed *after creating the environment* via
+
+.. code-block:: bash
+
+   pip install --no-deps 'gpu4pyscf-cuda12x>=1.0,<2' 'gpu4pyscf-libxc-cuda12x>=0.4,<1'
 
 To install the development dependencies, you can run:
 

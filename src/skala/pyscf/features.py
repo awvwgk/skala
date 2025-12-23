@@ -15,14 +15,15 @@ from torch import Tensor, nn
 from torch.autograd import Function
 from torch.autograd.function import FunctionCtx
 
+from skala.pyscf.backend import (
+    Grid,
+    check_gpu_imports_were_successful,
+    dft_gpu,
+    from_numpy_or_cupy,
+)
+
 DEFAULT_FEATURES = ["density", "kin", "grad", "grid_coords", "grid_weights"]
 DEFAULT_FEATURES_SET = set(DEFAULT_FEATURES)
-
-
-def maybe_from_numpy(x: np.ndarray | torch.Tensor) -> torch.Tensor:
-    if isinstance(x, np.ndarray):
-        return torch.from_numpy(x)
-    return x
 
 
 def maybe_expand_and_divide(
@@ -40,11 +41,11 @@ def maybe_expand_and_divide(
 def generate_features(
     mol: gto.Mole,
     dm: Tensor,
-    grids: dft.Grids,
+    grids: Grid,
     features: set[str] | None = None,
-    _ao_cache: dict[tuple[gto.Mole, dft.Grids, int], tuple[Tensor, int]] | None = None,
+    chunk_size: int | None = None,
     max_memory: int = 2000,
-    chunk_size: int = 1000,
+    gpu: bool = False,
 ) -> dict[str, Tensor]:
     """Generate density features for a given molecule. The density features are stored in a dictionary
     with the keys matching the requested features.
@@ -55,18 +56,16 @@ def generate_features(
       the molecule
     dm: Tensor
       the density matrix
-    grids: dft.Grids
+    grids: Grid
       the grid
     features: set[str] | None
       the requested features
-    _ao_cache:
-      a cache for the atomic orbitals
+    chunk_size: int | None
+        a manually specified chunk size for processing the grids, if None the chunk size is determined automatically
     max_memory: int
       the maximum memory to use for calculating the features
-    chunk_size: int
-      the number of grid points to process at a time for the Hartree-Fock exchange
-      energy density, for which the Jacobian-vector product is cached in a smarter way to
-      avoid memory issues.
+    gpu: bool
+        whether to use the GPU(4pyscf) for calculations
 
     Returns
     -------
@@ -79,18 +78,25 @@ def generate_features(
     # if dm is a 3D tensor, then we have a spin-polarized system
     with_spin = True if len(dm.shape) == 3 else False
 
+    if gpu and dm.device.type != "cuda":
+        raise ValueError("Density matrix must be on the GPU when gpu=True.")
+
     mol_features = {}
 
     if "grid_coords" in features:
-        mol_features["grid_coords"] = torch.from_numpy(grids.coords).to(dm.dtype)
+        mol_features["grid_coords"] = from_numpy_or_cupy(
+            grids.coords, device=dm.device, dtype=dm.dtype
+        )
 
     if "grid_weights" in features:
-        mol_features["grid_weights"] = torch.from_numpy(grids.weights).to(dm.dtype)
+        mol_features["grid_weights"] = from_numpy_or_cupy(
+            grids.weights, device=dm.device, dtype=dm.dtype
+        )
 
     if "coarse_0_atomic_coords" in features:
-        mol_features["coarse_0_atomic_coords"] = maybe_from_numpy(
-            mol.atom_coords()
-        ).double()
+        mol_features["coarse_0_atomic_coords"] = from_numpy_or_cupy(
+            mol.atom_coords(), device=dm.device, dtype=dm.dtype
+        )
 
     with_mgga_feature = (
         "density" in features
@@ -109,7 +115,10 @@ def generate_features(
                 with_kin="kin" in features,
                 with_lapl="lapl" in features,
             ),
-            max_memory_cpu=max_memory,
+            block_size=chunk_size,
+            max_memory=max_memory,
+            fix_block_size=chunk_size is None,
+            gpu=gpu,
         )
 
         for feature in mgga_features:
@@ -122,25 +131,6 @@ def generate_features(
 
 def is_density_feature(feature: str) -> bool:
     return feature in {"density", "grad", "kin"}
-
-
-def eval_ao(
-    mol: gto.Mole,
-    grids: dft.Grids,
-    *,
-    deriv: int,
-    cache: dict[tuple[gto.Mole, dft.Grids, int], tuple[Tensor, int]] | None = None,
-) -> Tensor:
-    cache = cache or {}
-    if cached := cache.get((mol, grids, deriv)):
-        ao, size = cached
-        if size == grids.size:
-            return ao
-    ao = torch.from_numpy(dft.numint.eval_ao(mol, grids.coords, deriv=deriv))
-    if deriv == 0:
-        ao = ao[None, ...]
-    cache[mol, grids, deriv] = ao, grids.size
-    return ao
 
 
 def partial_feature_function_over_aos(
@@ -393,7 +383,7 @@ class ChunkEvalForward(Function):  # type: ignore[misc]
         inputs: tuple[
             torch.Tensor,
             gto.Mole,
-            dft.Grids,
+            Grid,
             FeatureFunction,
             int,
             int,
@@ -410,6 +400,7 @@ class ChunkEvalForward(Function):  # type: ignore[misc]
             ctx.feature_function,
             ctx.blksize,
             ctx.compile_feature_function,
+            ctx.gpu,
             *ctx.vectors_jvp,
         ) = inputs
         ctx.save_for_backward(ctx.dm)
@@ -418,17 +409,27 @@ class ChunkEvalForward(Function):  # type: ignore[misc]
     def forward(
         dm: torch.Tensor,
         mol: gto.Mole,
-        grids: dft.Grids,
+        grids: Grid,
         feature_function: FeatureFunction,
         blksize: int,
         compile_feature_function: bool,
+        gpu: bool,
         *vectors_jvp: torch.Tensor,
     ) -> torch.Tensor:
         ngrids = grids.weights.size
         block_loop_args = (mol, grids, mol.nao)
-        block_loop_kwargs = {"deriv": feature_function.deriv, "blksize": blksize}
-        ni = dft.numint.NumInt()
-        sort_idx = np.arange(mol.nao_nr())
+        block_loop_kwargs = {
+            "deriv": feature_function.deriv,
+            "blksize": blksize if not gpu else None,
+        }
+        if gpu:
+            check_gpu_imports_were_successful()
+            ni = dft_gpu.numint.NumInt().build(mol, grids.coords)
+            ni.grid_blksize = blksize
+            sort_idx = ni.gdftopt._ao_idx
+        else:
+            ni = dft.numint.NumInt()
+            sort_idx = np.arange(mol.nao_nr())
 
         features = torch.zeros(
             *dm.shape[:-2],
@@ -446,7 +447,10 @@ class ChunkEvalForward(Function):  # type: ignore[misc]
         ):
             start, end = end, end + weights.size
             # Mask dm to only include the relevant AOs
-            mask = torch.arange(mol.nao_nr(), device=dm.device)
+            if mask is None or not gpu:
+                mask = torch.arange(mol.nao_nr(), device=dm.device)
+            else:
+                mask = torch.from_dlpack(mask)
             masked_dm = dm[..., sort_idx, :][..., sort_idx][
                 ..., mask[:, None], mask[None, :]
             ]
@@ -454,7 +458,9 @@ class ChunkEvalForward(Function):  # type: ignore[misc]
             # Apply chain rule for this particular block
             partial_func = partial_feature_function_over_aos(
                 feature_function,
-                torch.from_numpy(ao_block).transpose(-1, -2).to(dm.device),
+                from_numpy_or_cupy(
+                    ao_block, device=dm.device, dtype=dm.dtype, transpose=not gpu
+                ),
             )
             for vector_jvp in vectors_jvp:
                 partial_func = partial_jvp_function_over_tangents(
@@ -483,6 +489,7 @@ class ChunkEvalForward(Function):  # type: ignore[misc]
             ctx.feature_function,
             ctx.blksize,
             ctx.compile_feature_function,
+            ctx.gpu,
             *ctx.vectors_jvp,
             grad_input,
         )
@@ -504,6 +511,7 @@ class ChunkEvalForward(Function):  # type: ignore[misc]
                 ["jvp"] * len(ctx.vectors_jvp) + ["first_vjp"],
                 ctx.blksize,
                 ctx.compile_feature_function,
+                ctx.gpu,
                 *ctx.vectors_jvp,
                 grad_output,
             )
@@ -511,8 +519,8 @@ class ChunkEvalForward(Function):  # type: ignore[misc]
 
         # We need to provide None for the gradients of the non-differentiable inputs
         # these are mol (1), grids (2), feature_function (3), blksize (4),
-        # compile_feature_function (5)
-        num_non_differentiable_inputs = 5
+        # compile_feature_function (5), gpu (6)
+        num_non_differentiable_inputs = 6
 
         grads += [None] * num_non_differentiable_inputs
 
@@ -529,11 +537,13 @@ class ChunkEvalForward(Function):  # type: ignore[misc]
                     derivative_types,
                     ctx.blksize,
                     ctx.compile_feature_function,
+                    ctx.gpu,
                     *ctx.vectors_jvp[:i],
                     grad_output,
                     *ctx.vectors_jvp[i + 1 :],
                 )
             )
+
         return tuple(grads)
 
 
@@ -544,10 +554,11 @@ class ChunkEvalBackward(Function):  # type: ignore[misc]
         inputs: tuple[
             torch.Tensor,
             gto.Mole,
-            dft.Grids,
+            Grid,
             FeatureFunction,
             list[str],
             int,
+            bool,
             bool,
             torch.Tensor,
         ],
@@ -561,26 +572,36 @@ class ChunkEvalBackward(Function):  # type: ignore[misc]
             ctx.derivative_types,
             ctx.blksize,
             ctx.compile_feature_function,
+            ctx.gpu,
             *ctx.vectors,
         ) = inputs
-
         ctx.save_for_backward(ctx.dm)
 
     @staticmethod
     def forward(
         dm: torch.Tensor,
         mol: gto.Mole,
-        grids: dft.Grids,
+        grids: Grid,
         feature_function: FeatureFunction,
         derivative_types: list[str],
         blksize: int,
         compile_feature_function: bool,
+        gpu: bool,
         *vectors: torch.Tensor,
     ) -> torch.Tensor:
         block_loop_args = (mol, grids, mol.nao)
-        block_loop_kwargs = {"deriv": feature_function.deriv, "blksize": blksize}
-        ni = dft.numint.NumInt()
-        sort_idx = np.arange(mol.nao_nr())
+        block_loop_kwargs = {
+            "deriv": feature_function.deriv,
+            "blksize": blksize if not gpu else None,
+        }
+        if gpu:
+            check_gpu_imports_were_successful()
+            ni = dft_gpu.numint.NumInt().build(mol, grids.coords)
+            ni.grid_blksize = blksize
+            sort_idx = ni.gdftopt._ao_idx
+        else:
+            ni = dft.numint.NumInt()
+            sort_idx = np.arange(mol.nao_nr())
 
         end: int = 0
         out = torch.zeros_like(dm)
@@ -595,13 +616,18 @@ class ChunkEvalBackward(Function):  # type: ignore[misc]
             start, end = end, end + weights.size
 
             # Mask to only include the relevant AOs
-            mask = torch.arange(mol.nao_nr(), device=dm.device)
+            if mask is None or not gpu:
+                mask = torch.arange(mol.nao_nr(), device=dm.device)
+            else:
+                mask = from_numpy_or_cupy(mask, device=dm.device, dtype=torch.long)
 
             # Apply chain rule for this particular block
             # but be careful with signature change upon first vjp
             partial_func = partial_feature_function_over_aos(
                 feature_function,
-                torch.from_numpy(ao_block).transpose(-1, -2).to(dm.device),
+                from_numpy_or_cupy(
+                    ao_block, device=dm.device, dtype=dm.dtype, transpose=not gpu
+                ),
             )
             for derivative_type, vector in zip(derivative_types, vectors, strict=True):
                 if derivative_type == "jvp":
@@ -651,6 +677,7 @@ class ChunkEvalBackward(Function):  # type: ignore[misc]
             ctx.derivative_types + ["jvp"],
             ctx.blksize,
             ctx.compile_feature_function,
+            ctx.gpu,
             *ctx.vectors,
             grad_input,
         )
@@ -671,14 +698,15 @@ class ChunkEvalBackward(Function):  # type: ignore[misc]
                 ctx.derivative_types + ["vjp"],
                 ctx.blksize,
                 ctx.compile_feature_function,
+                ctx.gpu,
                 *ctx.vectors,
                 grad_output,
             )
         ]
         # We need to provide None for the gradients of the non-differentiable inputs
         # these are mol (1), grids (2), feature_function (3), derivative_types (4), blksize (5),
-        # compile_feature_function (6)
-        num_non_differentiable_inputs = 6
+        # compile_feature_function (6), gpu (7)
+        num_non_differentiable_inputs = 7
 
         grads += [None] * num_non_differentiable_inputs
         # Gradients of gradients
@@ -695,6 +723,7 @@ class ChunkEvalBackward(Function):  # type: ignore[misc]
                         derivative_types,
                         ctx.blksize,
                         ctx.compile_feature_function,
+                        ctx.gpu,
                         *ctx.vectors[:i],
                         grad_output,
                         *ctx.vectors[i + 1 :],
@@ -709,6 +738,7 @@ class ChunkEvalBackward(Function):  # type: ignore[misc]
                         ctx.feature_function,
                         ctx.blksize,
                         ctx.compile_feature_function,
+                        ctx.gpu,
                         *ctx.vectors[:i],
                         grad_output,
                         *ctx.vectors[i + 1 :],
@@ -724,29 +754,38 @@ class ChunkEvalBackward(Function):  # type: ignore[misc]
 def non_chunk(
     dm: torch.Tensor,
     mol: gto.Mole,
-    grids: dft.Grids,
+    grids: Grid,
     feature_function: FeatureFunction,
     compile_feature_function: bool = False,
+    gpu: bool = False,
 ) -> torch.Tensor:
-    ni = dft.numint.NumInt()
-    ao = torch.from_dlpack(
-        ni.eval_ao(mol, grids.coords, deriv=feature_function.deriv, non0tab=None)
-    ).to(dm.device)
-    if compile_feature_function:
-        return torch.compile(feature_function.forward)(dm, ao.transpose(-1, -2))
+    if gpu:
+        check_gpu_imports_were_successful()
+        ni = dft_gpu.numint.NumInt().build(mol, grids.coords)
     else:
-        return feature_function.forward(dm, ao.transpose(-1, -2))
+        ni = dft.numint.NumInt()
+    ao = from_numpy_or_cupy(
+        ni.eval_ao(mol, grids.coords, deriv=feature_function.deriv, non0tab=None),
+        device=dm.device,
+        dtype=dm.dtype,
+        transpose=True,
+    )
+    if compile_feature_function:
+        return torch.compile(feature_function.forward)(dm, ao)
+    else:
+        return feature_function.forward(dm, ao)
 
 
 def auto_chunk(
     dm: torch.Tensor,
     mol: gto.Mole,
-    grids: dft.Grids,
+    grids: Grid,
     feature_function: FeatureFunction,
     block_size: int | None = None,
-    max_memory_cpu: int = 2000,
+    max_memory: int = 2000,
     fix_block_size: bool = True,
     compile_feature_function: bool = False,
+    gpu: bool = False,
 ) -> dict[str, torch.Tensor]:
     """
     Automatically splits feature evaluation into smaller chunks if needed.
@@ -763,20 +802,22 @@ def auto_chunk(
         evaluating the feature function.
     mol: gto.Mole
         PySCF molecule object representing the system of interest.
-    grids: dft.Grids
+    grids: Grid
         Grids object defining the points in space on which
         the feature function is evaluated.
     feature_function: FeatureFunction
         The object representing the feature function to evaluate. The number of derivatives (deriv) determines
         how many components to compute.
+    gpu: bool, optional
+        Whether to use GPU for computation. Defaults to False.
     block_size: int | None, optional
-        Manually specified block size for chunking.
+        Manually specified block size for chunking. (CPU only)
         Defaults to None.
-    max_memory_cpu: int, optional
+    max_memory: int, optional
         Maximum memory in MB to use for chunking (CPU only)
     fix_block_size: bool, optional
         Whether to fix the block size or compute it
-        automatically based on system resources. Defaults to True.
+        automatically based on system resources. Defaults to True. (CPU only)
     compile_feature_function: bool, optional
         If True, compiles the feature function for efficiency. Defaults to False.
 
@@ -787,22 +828,31 @@ def auto_chunk(
         computed in smaller chunks or in a single pass, depending on the block size.
     """
 
+    if gpu:
+        check_gpu_imports_were_successful()
+        if dm.device.type != "cuda":
+            raise ValueError("Density matrix must be on the GPU when gpu=True.")
+
     blksize: int | None
-    if block_size is None and fix_block_size:
+
+    if gpu and block_size is not None:
+        raise ValueError("Setting custom block size is not supported on GPU.")
+
+    if block_size is None and fix_block_size and not gpu:
+        nao = mol.nao_nr()
         comp = (
             (feature_function.deriv + 1)
             * (feature_function.deriv + 2)
             * (feature_function.deriv + 3)
             // 6
         )
-        nao = mol.nao_nr()
         BLKSIZE = dft.gen_grid.BLKSIZE
-        blksize = int(max_memory_cpu * 1e6 / ((comp + 1) * nao * 8 * BLKSIZE))
+        blksize = int(max_memory * 1e6 / ((comp + 1) * nao * 8 * BLKSIZE))
         blksize = max(4, min(blksize, 1200)) * BLKSIZE
     else:
         blksize = block_size
 
-    if blksize is not None:
+    if blksize is not None and not gpu:
         blksize = blksize - blksize % dft.gen_grid.BLKSIZE
 
     if blksize is not None and blksize >= grids.weights.shape[0]:
@@ -812,6 +862,7 @@ def auto_chunk(
             grids,
             feature_function,
             compile_feature_function=compile_feature_function,
+            gpu=gpu,
         )
     else:
         features = ChunkEvalForward.apply(
@@ -821,5 +872,6 @@ def auto_chunk(
             feature_function,
             blksize,
             compile_feature_function,
+            gpu,
         )
     return feature_function.to_dict(features)

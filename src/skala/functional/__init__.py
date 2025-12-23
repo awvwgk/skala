@@ -10,6 +10,7 @@ exchange-correlation functionals, including traditional functionals
 
 import os
 
+import torch
 from huggingface_hub import hf_hub_download
 
 from skala.functional.base import ExcFunctionalBase
@@ -27,7 +28,7 @@ __all__ = [
 ]
 
 
-def load_functional(name: str) -> ExcFunctionalBase:
+def load_functional(name: str, device: torch.device | None = None) -> ExcFunctionalBase:
     """
     Load an exchange-correlation functional by name.
 
@@ -66,21 +67,26 @@ def load_functional(name: str) -> ExcFunctionalBase:
         if env_path is not None:
             path = env_path
         else:
-            path = hf_hub_download(repo_id="microsoft/skala", filename="skala-1.0.fun")
+            filename = (
+                "skala-1.0.fun"
+                if device is None or device.type == "cpu"
+                else "skala-1.0-cuda.fun"
+            )
+            path = hf_hub_download(repo_id="microsoft/skala", filename=filename)
         with open(path, "rb") as fd:
-            return TracedFunctional.load(fd)
+            return TracedFunctional.load(fd, device=device)
 
     if name.lower() == "lda":
-        return LDA()
+        return LDA().to(device=device)
 
     if name.lower() == "spw92":
-        return SPW92()
+        return SPW92().to(device=device)
 
     if name.lower() == "pbe":
-        return PBE()
+        return PBE().to(device=device)
 
     if name.lower() == "tpss":
-        return TPSS()
+        return TPSS().to(device=device)
 
     raise ValueError(
         f"Unknown functional: {name}. Please provide a valid functional name or path to a traced functional file."

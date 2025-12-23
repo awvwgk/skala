@@ -9,6 +9,15 @@ from pyscf import dft, gto
 from torch import Tensor
 
 from skala.functional.base import ExcFunctionalBase
+from skala.pyscf.backend import (
+    KS,
+    Array,
+    Grid,
+    check_gpu_imports_were_successful,
+    from_numpy_or_cupy,
+    to_cupy,
+    to_numpy,
+)
 from skala.pyscf.features import generate_features
 
 
@@ -23,34 +32,40 @@ class LibXCSpec(Protocol):
     def is_nlc(xc: str) -> bool: ...
 
 
-class PySCFNumInt(Protocol):
+class PySCFNumInt(
+    Protocol[Array],
+):
     """Interface for PySCF-compatible numint functionals."""
 
     libxc: LibXCSpec
 
     def get_rho(
-        self, mol: gto.Mole, dm: np.ndarray, grids: dft.Grids, max_memory: int = 2000
-    ) -> np.ndarray: ...
+        self,
+        mol: gto.Mole,
+        dm: Array,
+        grids: Grid,
+        max_memory: int = 2000,
+    ) -> Array: ...
 
     def nr_rks(
         self,
         mol: gto.Mole,
-        grids: dft.Grids,
+        grids: Grid,
         xc_code: str | None,
-        dm: np.ndarray,
+        dm: Array,
         max_memory: int = 2000,
-    ) -> tuple[float, float, np.ndarray]:
+    ) -> tuple[float, float, Array]:
         """Restricted Kohn-Sham method, applicable if both spin-densities as equal."""
         ...
 
     def nr_uks(
         self,
         mol: gto.Mole,
-        grids: dft.Grids,
+        grids: Grid,
         xc_code: str | None,
-        dm: np.ndarray,
+        dm: Array,
         max_memory: int = 2000,
-    ) -> tuple[np.ndarray, float, np.ndarray]:
+    ) -> tuple[Array, float, Array]:
         """Unrestricted Kohn-Sham method, spin densities can be different."""
         ...
 
@@ -59,10 +74,10 @@ class PySCFNumInt(Protocol):
 
     def gen_response(
         self,
-        mo_coeff: np.ndarray | None,
-        mo_occ: np.ndarray | None,
+        mo_coeff: Array | None,
+        mo_occ: Array | None,
         *,
-        ks: dft.rks.RKS | dft.uks.UKS,
+        ks: KS,
         **kwargs: Any,
     ) -> Callable[[np.ndarray], np.ndarray]:
         """Generates the response function for the functional."""
@@ -89,24 +104,60 @@ class SkalaNumInt(PySCFNumInt):
     -1.142330...
     """
 
-    def __init__(self, functional: ExcFunctionalBase, chunk_size: int = 1000):
-        self._ao_cache: dict[tuple[gto.Mole, dft.Grids, int], tuple[Tensor, int]] = {}
-        self.func = functional
+    device: torch.device
+
+    def __init__(
+        self,
+        functional: ExcFunctionalBase,
+        chunk_size: int | None = None,
+        device: torch.device | None = None,
+    ):
+        if device is None:
+            self.device = torch.get_default_device()
+        else:
+            self.device = device
+
+        if self.device.type == "cuda":
+            check_gpu_imports_were_successful()
+
+        self.func = functional.to(device=self.device)
         self.chunk_size = chunk_size
 
+    def from_backend(
+        self,
+        x: Array,
+        device: torch.device | None = None,
+        transpose: bool = False,
+    ) -> Tensor:
+        return from_numpy_or_cupy(x, device=device or self.device, transpose=transpose)
+
+    def to_backend(self, x: Tensor | list[Tensor]) -> Array | list[Array]:
+        if isinstance(x, list):
+            return [self.to_backend(y) for y in x]
+
+        if self.device.type == "cuda":
+            return to_cupy(x)
+        else:
+            return to_numpy(x)
+
     def get_rho(
-        self, mol: gto.Mole, dm: np.ndarray, grids: dft.Grids, max_memory: int = 2000
-    ) -> np.ndarray:
+        self,
+        mol: gto.Mole,
+        dm: Array,
+        grids: Grid,
+        max_memory: int = 2000,
+        verbose: int = 0,
+    ) -> Array:
         mol_features = generate_features(
             mol,
-            torch.from_numpy(dm),
+            self.from_backend(dm),
             grids,
             features={"density"},
-            _ao_cache=self._ao_cache,
             chunk_size=self.chunk_size,
             max_memory=max_memory,
+            gpu=self.device.type == "cuda",
         )
-        return mol_features["density"].sum(0).numpy()
+        return self.to_backend(mol_features["density"].sum(0))
 
     def __call__(
         self,
@@ -118,14 +169,15 @@ class SkalaNumInt(PySCFNumInt):
         max_memory: int = 2000,
     ) -> tuple[Tensor, Tensor, Tensor]:
         dm = dm.requires_grad_()
+
         mol_features = generate_features(
             mol,
             dm,
             grids,
             set(self.func.features),
-            _ao_cache=self._ao_cache,
             chunk_size=self.chunk_size,
             max_memory=max_memory,
+            gpu=self.device.type == "cuda",
         )
         for k, v in mol_features.items():
             mol_features[k] = v.to(self.device)
@@ -140,47 +192,40 @@ class SkalaNumInt(PySCFNumInt):
 
         rho = mol_features["density"]
         grid_weights = mol_features.get(
-            "grid_weights", torch.from_numpy(grids.weights).to(self.device)
+            "grid_weights", self.from_backend(grids.weights)
         )
         N = (rho * grid_weights).sum(dim=-1)
-        return N.cpu(), E_xc.cpu(), V_xc.cpu()
-
-    @property
-    def device(self) -> torch.device:
-        try:
-            return next(self.func.parameters()).device
-        except StopIteration:
-            return torch.device("cpu")
+        return N, E_xc, V_xc
 
     def nr_rks(
         self,
         mol: gto.Mole,
-        grids: dft.Grids,
+        grids: Grid,
         xc_code: str | None,
-        dm: np.ndarray,
+        dm: Array,
         max_memory: int = 2000,
-    ) -> tuple[float, float, np.ndarray]:
+    ) -> tuple[float, float, Array]:
         """Restricted Kohn-Sham method, applicable if both spin-densities as equal."""
         assert len(dm.shape) == 2
         N, E_xc, V_xc = self(
-            mol, grids, xc_code, torch.from_numpy(dm), max_memory=max_memory
+            mol, grids, xc_code, self.from_backend(dm), max_memory=max_memory
         )
-        return N.sum().item(), E_xc.item(), V_xc.numpy()
+        return N.sum().item(), E_xc.item(), self.to_backend(V_xc)
 
     def nr_uks(
         self,
         mol: gto.Mole,
-        grids: dft.Grids,
+        grids: Grid,
         xc_code: str | None,
-        dm: np.ndarray,
+        dm: Array,
         max_memory: int = 2000,
-    ) -> tuple[np.ndarray, float, np.ndarray]:
+    ) -> tuple[Array, float, Array]:
         """Unrestricted Kohn-Sham method, spin densities can be different."""
         assert len(dm.shape) == 3 and dm.shape[0] == 2
         N, E_xc, V_xc = self(
-            mol, grids, xc_code, torch.from_numpy(dm), max_memory=max_memory
+            mol, grids, xc_code, self.from_backend(dm), max_memory=max_memory
         )
-        return N.detach().numpy(), E_xc.item(), V_xc.numpy()
+        return self.to_backend(N), E_xc.item(), self.to_backend(V_xc)
 
     class libxc:
         __version__ = None
@@ -196,12 +241,12 @@ class SkalaNumInt(PySCFNumInt):
 
     def gen_response(
         self,
-        mo_coeff: np.ndarray | None,
-        mo_occ: np.ndarray | None,
+        mo_coeff: Array | None,
+        mo_occ: Array | None,
         *,
-        ks: dft.rks.RKS | dft.uks.UKS,
+        ks: KS,
         **kwargs: Any,
-    ) -> Callable[[np.ndarray], np.ndarray]:
+    ) -> Callable[[Array], Array]:
         assert mo_coeff is not None
         assert mo_occ is not None
         if kwargs is not None:
@@ -214,17 +259,15 @@ class SkalaNumInt(PySCFNumInt):
             if "with_j" in kwargs:
                 assert kwargs["with_j"]
 
-        dm0 = torch.from_numpy(ks.make_rdm1(mo_coeff, mo_occ))
+        dm0 = self.from_backend(ks.make_rdm1(mo_coeff, mo_occ))
         # caching V_xc saves a forward pass in each iteration
         V_xc = self(ks.mol, ks.grids, None, dm0, second_order=True)[2]
 
-        def hessian_vector_product(dm1: np.ndarray) -> np.ndarray:
-            v1 = (
+        def hessian_vector_product(dm1: Array) -> Array:
+            v1 = self.to_backend(
                 torch.autograd.grad(
-                    V_xc, dm0, torch.from_numpy(dm1), retain_graph=True
+                    V_xc, dm0, self.from_backend(dm1), retain_graph=True
                 )[0]
-                .detach()
-                .numpy()
             )
             vj = ks.get_j(ks.mol, dm1, hermi=1)
 

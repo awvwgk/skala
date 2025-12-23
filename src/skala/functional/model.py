@@ -452,13 +452,11 @@ class TensorProduct(nn.Module):  # type: ignore[misc]
             # assuming uvw connectivity
             return int(self.irreps_in1[ins[0]].mul * self.irreps_in2[ins[1]].mul)
 
-        self.xs = []
         for ins in self.instr:
             i_1, i_2, i_out = ins
             num_in = sum(num_elements(ins_) for ins_ in self.instr if ins_[2] == ins[2])
             num_out = self.irreps_out[ins[2]].mul
             x = (6 / (num_in + num_out)) ** 0.5
-            self.xs.append(x)
             getattr(self, f"weight_{i_1}_{i_2}_{i_out}").data.uniform_(-x, x)
 
     @property

@@ -85,6 +85,9 @@ class TracedFunctional(ExcFunctionalBase):
             "protocol_version": b"",
         }
 
+        if device is None:
+            device = torch.get_default_device()
+
         traced_model = torch.jit.load(fp, _extra_files=extra_files, map_location=device)
 
         _metadata = json.loads(extra_files["metadata"].decode("utf-8"))

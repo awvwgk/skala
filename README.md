@@ -43,8 +43,30 @@ mol = gto.M(
 ks = SkalaKS(mol, xc="skala")
 ks.kernel()
 ```
-
 Go to [microsoft.github.io/skala](https://microsoft.github.io/skala) for a more detailed installation guide and further examples of how to use Skala functional with PySCF and ASE and in [Azure Foundry](https://ai.azure.com/catalog/models/Skala).
+
+## Getting started (GPU support)
+
+Install using Pip:
+```bash
+cu_version=128 #or 126 or 130 depending on your CUDA version
+pip install torch cupy --extra-index-url "https://download.pytorch.org/whl/cu${cu_version}"
+pip install --no-deps "gpu4pyscf-cuda${cu_version:0:2}x>=1.0,<2" "gpu4pyscf-libxc-cuda${cu_version:0:2}x>=0.4,<1"
+pip install microsoft-skala
+```
+Run an SCF calculation with Skala for a hydrogen molecule on GPU:
+
+```python
+from pyscf import gto
+from skala.gpu4pyscf import SkalaKS
+
+mol = gto.M(
+    atom="""H 0 0 0; H 0 0 1.4""",
+    basis="def2-tzvp",
+)
+ks = SkalaKS(mol, xc="skala")
+ks.kernel()
+```
 
 ## Project information
 
