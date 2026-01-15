@@ -11,6 +11,17 @@ from torch import Tensor
 
 GPU_EXCEPTION: BaseException | None = None
 
+__all__ = [
+    "Array",
+    "Grid",
+    "KS",
+    "dft_gpu",
+    "check_gpu_imports_were_successful",
+    "from_numpy_or_cupy",
+    "to_numpy",
+    "to_cupy",
+]
+
 
 if TYPE_CHECKING:
     # During type checking, we do the same as during normal runtime, but without the try/except.
@@ -48,7 +59,7 @@ else:
         KS: TypeAlias = dft.rks.RKS | dft.uks.UKS
 
 
-def check_gpu_imports_were_successful():
+def check_gpu_imports_were_successful() -> None:
     if GPU_EXCEPTION is not None:
         raise GPU_EXCEPTION
 
