@@ -30,6 +30,12 @@ pip install torch --index-url https://download.pytorch.org/whl/cpu  # unless you
 pip install skala
 ```
 
+Or using Conda (Mamba):
+
+```bash
+mamba install -c conda-forge skala "pytorch=*=cpu*"
+```
+
 Run an SCF calculation with Skala for a hydrogen molecule:
 
 ```python
@@ -45,15 +51,17 @@ ks.kernel()
 ```
 Go to [microsoft.github.io/skala](https://microsoft.github.io/skala) for a more detailed installation guide and further examples of how to use Skala functional with PySCF and ASE and in [Azure Foundry](https://ai.azure.com/catalog/models/Skala).
 
-## Getting started (GPU support)
+## Getting started (GPU support via Mamba, includes CUDA toolkit, Torch, CuPy)
 
-Install using Pip:
+Supports CUDA version 11, 12 or 13. You can find the most recent CUDA version that is supported on your system using `nvidia-smi`.
+
 ```bash
-cu_version=128 #or 126 or 130 depending on your CUDA version
-pip install torch cupy --extra-index-url "https://download.pytorch.org/whl/cu${cu_version}"
-pip install --no-deps "gpu4pyscf-cuda${cu_version:0:2}x>=1.0,<2" "gpu4pyscf-libxc-cuda${cu_version:0:2}x>=0.4,<1"
-pip install skala
+cu_version=12 #or 11 or 13 depending on your CUDA version
+mamba env create -n skala -f environment-gpu.yml  "cuda-version==${cu_version}.*" skala
+mamba activate skala
+pip install --no-deps "gpu4pyscf-cuda${cu_version}x>=1.0,<2" "gpu4pyscf-libxc-cuda${cu_version}x>=0.4,<1"
 ```
+
 Run an SCF calculation with Skala for a hydrogen molecule on GPU:
 
 ```python
