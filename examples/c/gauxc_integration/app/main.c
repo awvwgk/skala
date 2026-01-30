@@ -85,11 +85,11 @@ enum GauXC_PruningScheme
 read_pruning_scheme(GauXCStatus* status, const char* spec)
 {
   status->code = 0;
-  if(strcmp(spec, "Unpruned") == 0)
+  if(strcmp(spec, "unpruned") == 0)
     return GauXC_PruningScheme_Unpruned;
-  if(strcmp(spec, "Robust") == 0)
+  if(strcmp(spec, "robust") == 0)
     return GauXC_PruningScheme_Robust;
-  if(strcmp(spec, "Treutler") == 0)
+  if(strcmp(spec, "treutler") == 0)
     return GauXC_PruningScheme_Treutler;
   status->code = 1;
 }
