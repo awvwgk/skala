@@ -148,7 +148,7 @@ program skala
   main: block
   ! Create runtime
 #ifdef GAUXC_HAS_MPI
-  rt = gauxc_runtime_environment_new(MPI_COMM_WORLD, status)
+  rt = gauxc_runtime_environment_new(status, MPI_COMM_WORLD)
 #else
   rt = gauxc_runtime_environment_new(status)
 #endif
