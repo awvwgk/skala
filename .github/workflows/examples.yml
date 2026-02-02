@@ -87,6 +87,7 @@ jobs:
 
     - name: Run example
       run: >-
+         ${{ matrix.toolchain == 'mpi' && 'mpirun -np 1 --map-by ppr:1:numa:pe=2 --bind-to core' || '' }}
          Skala
          ./gauxc/tests/ref_data/onedft_he_def2qzvp_tpss_uks.hdf5
          --model TPSS
