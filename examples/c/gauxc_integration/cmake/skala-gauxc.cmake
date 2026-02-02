@@ -40,7 +40,3 @@ else()
     message(FATAL_ERROR "GauXC found without CUDA support but Skala_GauXC_ENABLE_CUDA is ON")
   endif()
 endif()
-
-if(GAUXC_HAS_GAU2GRID AND NOT TARGET gau2grid::gg)
-  find_package(gau2grid CONFIG REQUIRED)
-endif()
