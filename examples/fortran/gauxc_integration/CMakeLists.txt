@@ -26,6 +26,15 @@ target_link_libraries(
   gauxc::gauxc
   FLAP::FLAP
 )
+if(GAUXC_HAS_MPI)
+  find_package(MPI REQUIRED)
+  target_link_libraries(
+    "${PROJECT_NAME}"
+    PRIVATE
+    MPI::MPI_Fortran
+  )
+endif()
+
 install(
   TARGETS
   "${PROJECT_NAME}"
