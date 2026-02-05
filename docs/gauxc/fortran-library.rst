@@ -373,7 +373,7 @@ improve performance, though the default is 512:
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (grid setup)
-   :lines: 186-193
+   :lines: 186-191
 
 We free the grid at program end:
 
