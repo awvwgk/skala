@@ -129,7 +129,7 @@ Similarly, at the end of the program we finalize MPI:
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90
-   :lines: 273-276
+   :lines: 277-279
 
 Command line interface
 ----------------------
