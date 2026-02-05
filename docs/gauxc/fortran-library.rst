@@ -51,7 +51,7 @@ After GauXC is available, we verify that our requirements are satisfied—this i
    :language: cmake
    :caption: cmake/skala-gauxc.cmake
 
-For the command-line interface, we use the FLAP library (Fortran command Line Arguments Parser).
+For the command-line interface, we use the `FLAP library <https://github.com/szaghi/FLAP/wiki>`__ (Fortran command Line Arguments Parser).
 
 .. literalinclude:: ../../examples/fortran/gauxc_integration/cmake/skala-flap.cmake
    :language: cmake

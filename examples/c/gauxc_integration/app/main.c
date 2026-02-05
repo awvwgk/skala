@@ -5,6 +5,7 @@
 #include <ctype.h>
 
 // For GauXC core functionality
+#include <gauxc/types.h>
 #include <gauxc/status.h>
 #include <gauxc/molecule.h>
 #include <gauxc/basisset.h>
@@ -22,22 +23,6 @@
 // For command line interface
 #include <argtable3.h>
 
-// Generic delete macro
-#define gauxc_delete(status, ptr) _Generic( (ptr), \
-                 GauXCMolecule : gauxc_molecule_delete, \
-                 GauXCBasisSet : gauxc_basisset_delete, \
-                  GauXCMolGrid : gauxc_molgrid_delete, \
-       GauXCRuntimeEnvironment : gauxc_runtime_environment_delete, \
-             GauXCLoadBalancer : gauxc_load_balancer_delete, \
-      GauXCLoadBalancerFactory : gauxc_load_balancer_factory_delete, \
-         GauXCMolecularWeights : gauxc_molecular_weights_delete, \
-  GauXCMolecularWeightsFactory : gauxc_molecular_weights_factory_delete, \
-               GauXCFunctional : gauxc_functional_delete, \
-               GauXCIntegrator : gauxc_integrator_delete, \
-        GauXCIntegratorFactory : gauxc_integrator_factory_delete, \
-                   GauXCMatrix : gauxc_matrix_delete \
-                               )(status, &(ptr))
-
 enum GauXC_ExecutionSpace
 read_execution_space(GauXCStatus* status, const char* exec_space_str)
 {
@@ -46,6 +31,7 @@ read_execution_space(GauXCStatus* status, const char* exec_space_str)
     return GauXC_ExecutionSpace_Host;
   if(strcmp(exec_space_str, "device") == 0)
     return GauXC_ExecutionSpace_Device;
+  status->message = "Invalid execution space specification";
   status->code = 1;
 }
 
@@ -61,6 +47,7 @@ read_radial_quad(GauXCStatus* status, const char* rad_quad_spec)
     return GauXC_RadialQuad_TreutlerAhlrichs;
   if(strcmp(rad_quad_spec, "murrayhandylaming") == 0)
     return GauXC_RadialQuad_MurrayHandyLaming;
+  status->message = "Invalid radial quadrature specification";
   status->code = 1;
 }
 
@@ -78,6 +65,7 @@ read_atomic_grid_size(GauXCStatus* status, const char* spec)
       return GauXC_AtomicGridSizeDefault_GM3;
     if(strcmp(spec, "gm5") == 0)
       return GauXC_AtomicGridSizeDefault_GM5;
+    status->message = "Invalid atomic grid size specification";
     status->code = 1;
 }
 
@@ -91,6 +79,7 @@ read_pruning_scheme(GauXCStatus* status, const char* spec)
     return GauXC_PruningScheme_Robust;
   if(strcmp(spec, "treutler") == 0)
     return GauXC_PruningScheme_Treutler;
+  status->message = "Invalid pruning scheme specification";
   status->code = 1;
 }
 
@@ -151,6 +140,9 @@ main(int argc, char** argv)
     arg_print_syntax(stdout, argtable, "\n\n");
     printf("Options:\n");
     arg_print_glossary(stdout, argtable, "  %-25s %s\n");
+#ifdef GAUXC_HAS_MPI
+    MPI_Finalize();
+#endif
     return EXIT_SUCCESS;
   }
 
@@ -158,6 +150,9 @@ main(int argc, char** argv)
     printf("Usage: %s", argv[0]);
     arg_print_syntax(stdout, argtable, "\n");
     arg_print_errors(stderr, end, argv[0]);
+#ifdef GAUXC_HAS_MPI
+    MPI_Abort(MPI_COMM_WORLD, 1);
+#endif
     return EXIT_FAILURE;
   }
 
@@ -174,13 +169,21 @@ main(int argc, char** argv)
   // Clean up argtable memory
   arg_freetable(argtable, sizeof(argtable) / sizeof(argtable[0]));
 
+  // Memory management for GauXC
+  void* objs[16];
+  size_t nobj = 0;
+
   // Add handler for events like exceptions
-  GauXCStatus status;
+  GauXCStatus status = {0, NULL};
 
   // Create runtime
   GauXCRuntimeEnvironment rt = gauxc_runtime_environment_new(&status GAUXC_MPI_CODE(, MPI_COMM_WORLD));
+  objs[nobj++] = &rt;
+  if (status.code) goto err;
   int world_rank = gauxc_runtime_environment_comm_rank(&status, rt);
+  if (status.code) goto err;
   int world_size = gauxc_runtime_environment_comm_size(&status, rt);
+  if (status.code) goto err;
 
   if(!world_rank && !status.code) {
     printf("Configuration\n");
@@ -194,18 +197,27 @@ main(int argc, char** argv)
 
   // Get molecule (atomic numbers and cartesian coordinates)
   GauXCMolecule mol = gauxc_molecule_new(&status);
+  objs[nobj++] = &mol;
+  if (status.code) goto err;
   // Load molecule from HDF5 dataset
   gauxc_molecule_read_hdf5_record(&status, mol, input_file, "/MOLECULE");
+  if (status.code) goto err;
 
   // Get basis set
   GauXCBasisSet basis = gauxc_basisset_new(&status);
+  objs[nobj++] = &basis;
+  if (status.code) goto err;
   // Load basis set from HDF5 dataset
   gauxc_basisset_read_hdf5_record(&status, basis, input_file, "/BASIS");
+  if (status.code) goto err;
 
   // Define molecular grid from grid size, radial quadrature and pruning scheme
   enum GauXC_AtomicGridSizeDefault grid_type = read_atomic_grid_size(&status, grid_spec);
+  if (status.code) goto err;
   enum GauXC_RadialQuad radial_quad = read_radial_quad(&status, rad_quad_spec);
+  if (status.code) goto err;
   enum GauXC_PruningScheme pruning_scheme = read_pruning_scheme(&status, prune_spec);
+  if (status.code) goto err;
   GauXCMolGrid grid = gauxc_molgrid_new_default(
     &status,
     mol,
@@ -213,28 +225,47 @@ main(int argc, char** argv)
     batch_size,
     radial_quad,
     grid_type);
+  objs[nobj++] = &grid;
+  if (status.code) goto err;
 
   // Choose whether we run on host or device
   enum GauXC_ExecutionSpace lb_exec_space, int_exec_space;
   lb_exec_space = read_execution_space(&status, lb_exec_space_str);
+  if (status.code) goto err;
   int_exec_space = read_execution_space(&status, int_exec_space_str);
+  if (status.code) goto err;
 
   // Setup load balancer based on molecule, grid and basis set
   GauXCLoadBalancerFactory lb_factory = gauxc_load_balancer_factory_new(&status, lb_exec_space, "Replicated");
+  objs[nobj++] = &lb_factory;
+  if (status.code) goto err;
   GauXCLoadBalancer lb = gauxc_load_balancer_factory_get_shared_instance(&status, lb_factory, rt, mol, grid, basis);
+  objs[nobj++] = &lb;
+  if (status.code) goto err;
 
   // Apply partitioning weights to the molecule grid
   GauXCMolecularWeightsSettings settings = {GauXC_XCWeightAlg_SSF, false};
   GauXCMolecularWeightsFactory mw_factory = gauxc_molecular_weights_factory_new(&status, int_exec_space,
     "Default", settings);
+  objs[nobj++] = &mw_factory;
+  if (status.code) goto err;
   GauXCMolecularWeights mw = gauxc_molecular_weights_factory_get_instance(&status, mw_factory);
+  if (status.code) goto err;
   gauxc_molecular_weights_modify_weights(&status, mw, lb);
+  objs[nobj++] = &mw;
+  if (status.code) goto err;
 
   // Setup exchange-correlation integrator
   GauXCFunctional func = gauxc_functional_from_string(&status, "PBE", true);
+  objs[nobj++] = &func;
+  if (status.code) goto err;
   GauXCIntegratorFactory integrator_factory = gauxc_integrator_factory_new(&status, int_exec_space,
     "Replicated", "Default", "Default", "Default");
+  objs[nobj++] = &integrator_factory;
+  if (status.code) goto err;
   GauXCIntegrator integrator = gauxc_integrator_factory_get_instance(&status, integrator_factory, func, lb);
+  objs[nobj++] = &integrator;
+  if (status.code) goto err;
 
   // Configure model checkpoint
   // GauXCOneDFTSettings onedft_settings;
@@ -242,9 +273,15 @@ main(int argc, char** argv)
 
   // Load density matrix from input
   GauXCMatrix P_s = gauxc_matrix_empty(&status);
+  objs[nobj++] = &P_s;
+  if (status.code) goto err;
   GauXCMatrix P_z = gauxc_matrix_empty(&status);
+  objs[nobj++] = &P_z;
+  if (status.code) goto err;
   gauxc_matrix_read_hdf5_record(&status, P_s, input_file, "/DENSITY_SCALAR");
+  if (status.code) goto err;
   gauxc_matrix_read_hdf5_record(&status, P_z, input_file, "/DENSITY_Z");
+  if (status.code) goto err;
 
 #ifdef GAUXC_HAS_MPI
   MPI_Barrier(MPI_COMM_WORLD);
@@ -253,9 +290,14 @@ main(int argc, char** argv)
   // Integrate exchange correlation energy
   double EXC;
   GauXCMatrix VXC_s = gauxc_matrix_empty(&status);
+  objs[nobj++] = &VXC_s;
+  if (status.code) goto err;
   GauXCMatrix VXC_z = gauxc_matrix_empty(&status);
+  objs[nobj++] = &VXC_z;
+  if (status.code) goto err;
 
   gauxc_integrator_eval_exc_vxc_onedft_uks(&status, integrator, P_s, P_z, model, &EXC, &VXC_s, &VXC_z);
+  if (status.code) goto err;
 
 #ifdef GAUXC_HAS_MPI
   MPI_Barrier(MPI_COMM_WORLD);
@@ -267,6 +309,13 @@ main(int argc, char** argv)
     printf("\n");
   }
 
+err:
+  int error_code = status.code;
+  if (error_code) {
+    fprintf(stderr, "Error (code %d)", error_code);
+    if (status.message) fprintf(stderr, ": %s", status.message);
+    fprintf(stderr, "\n");
+  }
   // Clean up memory
   free(input_file);
   free(model);
@@ -275,23 +324,16 @@ main(int argc, char** argv)
   free(prune_spec);
   free(lb_exec_space_str);
   free(int_exec_space_str);
-  gauxc_delete(&status, mol);
-  gauxc_delete(&status, basis);
-  gauxc_delete(&status, grid);
-  gauxc_delete(&status, rt);
-  gauxc_delete(&status, lb_factory);
-  gauxc_delete(&status, lb);
-  gauxc_delete(&status, mw_factory);
-  gauxc_delete(&status, mw);
-  gauxc_delete(&status, func);
-  gauxc_delete(&status, integrator_factory);
-  gauxc_delete(&status, integrator);
-  gauxc_delete(&status, P_s);
-  gauxc_delete(&status, P_z);
-  gauxc_delete(&status, VXC_s);
-  gauxc_delete(&status, VXC_z);
+  gauxc_objects_delete(&status, objs, nobj);
+  if (status.code) {
+    fprintf(stderr, "Error during cleanup (code %d)", status.code);
+    if (status.message) fprintf(stderr, ": %s", status.message);
+    fprintf(stderr, "\n");
+    error_code = status.code;
+  }
 
 #ifdef GAUXC_HAS_MPI
   MPI_Finalize();
 #endif
+  return error_code ? EXIT_FAILURE : EXIT_SUCCESS;
 }

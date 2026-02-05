@@ -50,7 +50,7 @@ Furthermore, after having GauXC available, we double check whether our requireme
    :language: cmake
    :caption: cmake/skala-gauxc.cmake
 
-For our command line driver, we will be using Argtable3 to create the command line interface.
+For our command line driver, we will be using `Argtable3 <https://www.argtable.org/>`__ to create the command line interface.
 
 .. literalinclude:: ../../examples/c/gauxc_integration/cmake/skala-argtable3.cmake
    :language: cmake
@@ -66,7 +66,7 @@ For our main driver program we include the relevant headers from GauXC, next to 
 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
-   :lines: 1-23
+   :lines: 1-24
    :caption: app/main.c (header includes)
 
 For each of the GauXC components we will be using, we include the respective header file from GauXC.
@@ -101,18 +101,18 @@ For each of the GauXC components we will be using, we include the respective hea
 `gauxc/matrix.h`
   For handling matrix data structures, like density matrices and potentials.
 
-We start our main driver program with a guarded call to the MPI initialization.
+We start our main driver with initializing the MPI environment, if GauXC was built with MPI support.
 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
-   :lines: 115-120
+   :lines: 104-109
    :caption: app/main.c (MPI initialize)
 
 For the finalization of the MPI environment we also add a guarded call to the MPI finalize function at the end of our main program.
 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
-   :lines: 294-297
+   :lines: 335-337,339
    :caption: app/main.c (MPI finalize)
 
 GauXC provides a macro ``GAUXC_HAS_MPI`` to inform users whether GauXC was built with MPI support.
@@ -147,7 +147,7 @@ We define the command line arguments for the input HDF5 file, model type, and ot
 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
-   :lines: 121-146
+   :lines: 110-135
    :caption: app/main.c (command line arguments)
 
 .. note::
@@ -158,7 +158,7 @@ With this we can parse the command line and handle potential errors.
 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
-   :lines: 148-162
+   :lines: 137-157
    :caption: app/main.c (parse command line arguments)
 
 Finally, we can extract the values of the command line arguments and store them in variables for later use.
@@ -166,21 +166,21 @@ For this purpose we will define two helper functions, one for copying the values
 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
-   :lines: 97-113
+   :lines: 86-102
    :caption: app/main.c (helper functions for command line arguments)
 
 With this we can extract the command line argument values.
 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
-   :lines: 164-172
+   :lines: 159-167
    :caption: app/main.c (extract command line argument values)
 
 At this point we can already free the Argtable3 structures as we do not need them anymore.
 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
-   :lines: 174-175
+   :lines: 169-170
    :caption: app/main.c (free Argtable3 structures)
 
 Also, we want to ensure our input string variables will get freed at the end of our program.
@@ -188,7 +188,7 @@ We add the respective ``free()`` calls at the end of our main program, before th
 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
-   :lines: 270-277
+   :lines: 319-326
    :caption: app/main.c (free input strings)
 
 Before adding any further implementation, we will create a first build of the project.
@@ -245,8 +245,13 @@ As first step for any interaction with GauXC, we need to initialize the GauXC st
 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
-   :lines: 177-183
+   :lines: 172-186
    :caption: app/main.c (GauXC status and runtime environment)
+
+.. tip::
+
+   We also define an array of pointers to GauXC objects we create during our program.
+   This will help us to free all allocated memory at the end of our program.
 
 The ``world_size`` and ``world_rank`` variables describe our MPI environment and contain dummy values if we do not use MPI.
 
@@ -255,23 +260,29 @@ We can use the ``world_rank`` variable to ensure that only the root process outp
 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
-   :lines: 185-193
+   :lines: 188-196
    :caption: app/main.c (configuration summary)
 
-Finally, we also add calls to free the runtime environment at the end of our main program.
-To ease freeing memory we will define a type generic macro for calling the respective free functions.
+At the end of our program we add a label for handling errors and process the status code and message accordingly.
 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
-   :lines: 25-39
-   :caption: app/main.c (free macro)
+   :caption: app/main.c (handle status code)
+   :lines: 312-318
 
-With this we can free the runtime environment at the end of our main program.
+Finally, we also add calls to free the runtime environment at the end of our main program.
 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
    :caption: app/main.c (free runtime)
-   :lines: 281
+   :lines: 327-333
+
+We can use the error code from the status to adjust our own program return code.
+
+.. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
+   :language: c
+   :caption: app/main.c (return exit code)
+   :lines: 335-339
 
 Molecule data
 -------------
@@ -301,14 +312,9 @@ We use ``gauxc_molecule_read_hdf5_record`` function which implements the reading
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
    :caption: app/main.c (read molecule)
-   :lines: 195-198
+   :lines: 198-204
 
-To ensure proper memory management we also add a call to free the molecule object at the end of our main program.
-
-.. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
-   :language: c
-   :caption: app/main.c (free molecule)
-   :lines: 278
+By registering the molecule object in our GauXC objects array, we ensure that it will be freed at the end of our main program.
 
 
 Basis set data
@@ -345,14 +351,7 @@ With GauXC's ``gauxc_basisset_read_hdf5_record`` function we can read the basis 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
    :caption: app/main.c (read basisset)
-   :lines: 200-203
-
-To avoid memory leaks we also add a call to free the basis set object at the end of our main program.
-
-.. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
-   :language: c
-   :caption: app/main.c (free basisset)
-   :lines: 279
+   :lines: 206-212
 
 Integration grid
 ----------------
@@ -364,7 +363,7 @@ In GauXC these are defined as enumerators and we add a number of helper function
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
    :caption: app/main.c (enumerator conversion functions)
-   :lines: 52-95
+   :lines: 38-84
 
 For the main program we can now create the molecular grid based on our input parameters.
 We also have to define the batch size for the grid, the default is 512 points per batch, however larger values up around 10000 are recommended for better performance.
@@ -372,14 +371,7 @@ We also have to define the batch size for the grid, the default is 512 points pe
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
    :caption: app/main.c (grid setup)
-   :lines: 205-215
-
-We free the molecular grid object at the end of our main program.
-
-.. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
-   :language: c
-   :caption: app/main.c (free grid)
-   :lines: 280
+   :lines: 214-229
 
 Exchange-correlation integrator
 -------------------------------
@@ -391,7 +383,7 @@ Again we have a helper function to convert the input string to the respective en
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
    :caption: app/main.c (execuation space enumerator)
-   :lines: 41-50
+   :lines: 26-36
 
 Note that the load balancer will provide access to the molecule, basis and grid data for all further usage in GauXC.
 We can now create the load balancer based on our input parameters.
@@ -399,7 +391,7 @@ We can now create the load balancer based on our input parameters.
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
    :caption: app/main.c (load balancer setup)
-   :lines: 217-231
+   :lines: 231-256
 
 Finally, we can create the main GauXC integrator, for this we setup the exchange-correlation integrator factory for producing an instance of the integrator.
 To configure the integrator we create an additional settings object which holds the model checkpoint we want to evaluate.
@@ -407,14 +399,7 @@ To configure the integrator we create an additional settings object which holds 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
    :caption: app/main.c (integrator setup)
-   :lines: 233-237
-
-We free the integrator and its associated objects at the end of our main program.
-
-.. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
-   :language: c
-   :caption: app/main.c (free integrator)
-   :lines: 282-288
+   :lines: 258-268
 
 Density matrix
 --------------
@@ -425,14 +410,7 @@ Similar to the molecule and basis set we will read it from our HDF5 input file.
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
    :caption: app/main.c (read density matrix)
-   :lines: 243-247
-
-Also for the density matrix we add a call to free the matrix object at the end of our main program.
-
-.. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
-   :language: c
-   :caption: app/main.c (free density matrix)
-   :lines: 289-290
+   :lines: 274-284
 
 Exchange-correlation evaluation
 -------------------------------
@@ -442,21 +420,14 @@ With all inputs provided we can now perform the exchange-correlation evaluation.
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
    :caption: app/main.c (exchange-correlation evaluation)
-   :lines: 253-258
+   :lines: 290-300
 
 After the evaluation we can output the computed exchange-correlation energy.
 
 .. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
    :language: c
    :caption: app/main.c (exchange-correlation output)
-   :lines: 264-268
-
-Since we have allocated new matrices for the exchange-correlation potential, we also need to free them at the end of our main program.
-
-.. literalinclude:: ../../examples/c/gauxc_integration/app/main.c
-   :language: c
-   :caption: app/main.c (free exchange-correlation potential)
-   :lines: 291-292
+   :lines: 306-310
 
 Now we can rebuild our project with
 
