@@ -56,7 +56,7 @@ Furthermore, after having GauXC available, we double check whether our requireme
    :caption: cmake/skala-gauxc.cmake
 
 While GauXC provides the implementation to evaluate the exchange-correlation functional, it is independent to the library used for storing matrices.
-For our example here we will be using Eigen3.
+For our example here we will be using `Eigen3 <https://libeigen.gitlab.io/>`__.
 Similar to GauXC we will attempt to find Eigen3 via its config file and fallback to downloading it.
 Since Eigen3 is a header-only library, we just need to reexport the include directory of the project.
 
@@ -64,7 +64,7 @@ Since Eigen3 is a header-only library, we just need to reexport the include dire
    :language: cmake
    :caption: cmake/skala-eigen3.cmake
 
-For our command line driver, we will be using CLI11 to create the command line interface.
+For our command line driver, we will be using `CLI11 <https://cliutils.github.io/CLI11/book/>`__ to create the command line interface.
 Similar to Eigen3, CLI11 is a header-only library and we will use the same approach for including its headers if the dependency can not be found in the environment.
 
 .. literalinclude:: ../../examples/cpp/gauxc_integration/cmake/skala-cli11.cmake
@@ -420,7 +420,7 @@ In the output we can see the results for the Skala functional
 
    Configuration
    -> Input file        : He_def2-svp.h5
-   -> Model             : ./skala-v1.0.fun
+   -> Model             : ./skala-1.0.fun
    -> Grid              : fine
    -> Radial quadrature : muraknowles
    -> Pruning scheme    : robust

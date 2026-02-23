@@ -231,8 +231,8 @@ options chosen above.
 
 .. code-block:: cmake
 
-   set(Skala_GauXC_URL "https://github.com/microsoft/skala/releases/download/v1.1.0/gauxc-skala.tar.gz")
-   set(Skala_GauXC_SHA256 "e0346c62453eef58ba3ee52c257370ee8abcbf00fbb1b4ea2e0bb879225e06be")
+   set(Skala_GauXC_URL "https://github.com/microsoft/skala/releases/download/v1.1.1/gauxc-skala.tar.gz")
+   set(Skala_GauXC_SHA256 "0a64b2623be99894d3c61bd78aec1759abf3f476656695fab76c5e3fbb372616")
 
    option(Skala_GauXC_ENABLE_OPENMP "Enable OpenMP support in GauXC" ON)
    option(Skala_GauXC_ENABLE_MPI "Enable MPI support in GauXC" OFF)

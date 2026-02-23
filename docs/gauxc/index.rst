@@ -12,4 +12,6 @@ The following sections provide instructions on how to install GauXC with Skala s
    installation
    standalone
    cpp-library
+   c-library
+   fortran-library
    settings

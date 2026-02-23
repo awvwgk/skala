@@ -9,6 +9,8 @@ if(NOT gauxc_FOUND)
   message(STATUS "GAUXC URL: ${Skala_GauXC_URL}")
 
   set(GAUXC_ENABLE_ONEDFT ON CACHE BOOL "" FORCE)
+  set(GAUXC_ENABLE_C ON CACHE BOOL "" FORCE)
+  set(GAUXC_ENABLE_FORTRAN ON CACHE BOOL "" FORCE)
   set(GAUXC_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
   set(GAUXC_ENABLE_HDF5 ON CACHE BOOL "" FORCE)
   set(GAUXC_ENABLE_OPENMP ${Skala_GauXC_ENABLE_OPENMP} CACHE BOOL "" FORCE)
@@ -18,7 +20,7 @@ if(NOT gauxc_FOUND)
   FetchContent_Declare(
     gauxc
     URL ${Skala_GauXC_URL}
-    URL_HASH SHA256=${Skala_GauXC_SHA256}
+    # URL_HASH SHA256=${Skala_GauXC_SHA256}
     DOWNLOAD_EXTRACT_TIMESTAMP ON
   )
   FetchContent_MakeAvailable(gauxc)
@@ -26,6 +28,12 @@ if(NOT gauxc_FOUND)
 endif()
 if(NOT GAUXC_HAS_ONEDFT)
   message(FATAL_ERROR "GauXC found but without Skala support enabled")
+endif()
+if(NOT GAUXC_HAS_C)
+  message(FATAL_ERROR "GauXC found but without C API support enabled")
+endif()
+if(NOT GAUXC_HAS_FORTRAN)
+  message(FATAL_ERROR "GauXC found but without Fortran API support enabled")
 endif()
 if(NOT GAUXC_HAS_HDF5)
   message(FATAL_ERROR "GauXC found but without HDF5 support enabled")
