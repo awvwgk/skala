@@ -1,0 +1,1 @@
+find_package(HDF5 REQUIRED COMPONENTS Fortran HL)

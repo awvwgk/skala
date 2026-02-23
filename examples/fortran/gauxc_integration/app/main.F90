@@ -14,15 +14,14 @@ program skala
   use gauxc_molgrid, only : gauxc_molgrid_type, gauxc_molgrid_new_default, &
     & gauxc_delete
   use gauxc_load_balancer, only : gauxc_load_balancer_type, gauxc_load_balancer_factory_type, &
-    & gauxc_load_balancer_factory_new, gauxc_get_shared_instance, gauxc_delete
+    & gauxc_load_balancer_factory_new, gauxc_get_instance, gauxc_delete
   use gauxc_molecular_weights, only : gauxc_molecular_weights_type, &
     & gauxc_molecular_weights_factory_type, gauxc_molecular_weights_factory_new, &
     & gauxc_molecular_weights_modify_weights, gauxc_get_instance, gauxc_delete, &
     & gauxc_molecular_weights_settings
   use gauxc_xc_functional, only : gauxc_functional_type, gauxc_functional_from_string, gauxc_delete
-  use gauxc_integrator, only : gauxc_integrator_type, gauxc_integrator_factory_type, &
-    & gauxc_integrator_factory_new, gauxc_get_instance, gauxc_eval_exc_vxc, gauxc_delete
-  use gauxc_matrix, only : gauxc_matrix_type, gauxc_matrix_empty, gauxc_matrix_data, gauxc_delete
+  use gauxc_integrator, only : gauxc_integrator_type, gauxc_integrator_new, &
+    & gauxc_eval_exc_vxc, gauxc_delete
   use gauxc_external_hdf5_read, only : gauxc_read_hdf5_record
 #ifdef GAUXC_HAS_MPI
   use mpi
@@ -40,9 +39,8 @@ program skala
   type(gauxc_molecular_weights_factory_type) :: mwf
   type(gauxc_molecular_weights_type) :: mw
   type(gauxc_functional_type) :: func
-  type(gauxc_integrator_factory_type) :: intf
   type(gauxc_integrator_type) :: integrator
-  type(gauxc_matrix_type) :: p_s, p_z, vxc_s, vxc_z
+  real(c_double), allocatable :: p_s(:,:), p_z(:,:), vxc_s(:,:), vxc_z(:,:)
 
   character(len=:), allocatable :: input_file, model, grid_spec, rad_quad_spec, prune_spec, &
     & lb_exec_space_str, int_exec_space_str
@@ -197,12 +195,11 @@ program skala
   ! Setup load balancer based on molecule, grid and basis set
   lbf = gauxc_load_balancer_factory_new(status, lb_exec_space, "Replicated")
   if (status%code /= 0) exit main
-  lb = gauxc_get_shared_instance(status, lbf, rt, mol, grid, basis)
+  lb = gauxc_get_instance(status, lbf, rt, mol, grid, basis)
   if (status%code /= 0) exit main
 
   ! Apply partitioning weights to the molecule grid
-  mwf = gauxc_molecular_weights_factory_new(status, int_exec_space, "Default", &
-    & gauxc_molecular_weights_settings())
+  mwf = gauxc_molecular_weights_factory_new(status, int_exec_space)
   if (status%code /= 0) exit main
   mw = gauxc_get_instance(status, mwf)
   if (status%code /= 0) exit main
@@ -211,18 +208,13 @@ program skala
 
   ! Setup exchange-correlation integrator
   func = gauxc_functional_from_string(status, "PBE", .true._c_bool)
-  intf = gauxc_integrator_factory_new(status, int_exec_space, "Replicated", &
-    & "Default", "Default", "Default")
-  if (status%code /= 0) exit main
-  integrator = gauxc_get_instance(status, intf, func, lb)
+  integrator = gauxc_integrator_new(status, func, lb, int_exec_space)
   if (status%code /= 0) exit main
 
   ! Load density matrix from input
-  p_s = gauxc_matrix_empty(status)
-  p_z = gauxc_matrix_empty(status)
-  call gauxc_read_hdf5_record(status, p_s, input_file, "/DENSITY_SCALAR")
+  call read_matrix_from_hdf5_record(status, p_s, input_file, "/DENSITY_SCALAR")
   if (status%code /= 0) exit main
-  call gauxc_read_hdf5_record(status, p_z, input_file, "/DENSITY_Z")
+  call read_matrix_from_hdf5_record(status, p_z, input_file, "/DENSITY_Z")
   if (status%code /= 0) exit main
 
 #ifdef GAUXC_HAS_MPI
@@ -231,8 +223,8 @@ program skala
   t_start = timing()
 
   ! Integrate exchange-correlation energy
-  vxc_s = gauxc_matrix_empty(status)
-  vxc_z = gauxc_matrix_empty(status)
+  allocate(vxc_s(size(p_s,1), size(p_s,2)))
+  allocate(vxc_z(size(p_z,1), size(p_z,2)))
   call gauxc_eval_exc_vxc(status, integrator, p_s, p_z, model, exc, vxc_s, vxc_z)
   if (status%code /= 0) exit main
 
@@ -243,13 +235,11 @@ program skala
   t_exc = t_end - t_start
 
   if (world_rank == 0) then
-    associate(vxc_s_ => gauxc_matrix_data(status, vxc_s), vxc_z_ => gauxc_matrix_data(status, vxc_z))
     print '(a)', "Results"
     print '(a,1x,es17.10,:1x,a)', "Exc          =", exc, "Eh"
-    print '(a,1x,es17.10,:1x,a)', "|VXC(a+b)|_F =", sqrt(sum(vxc_s_**2))
-    print '(a,1x,es17.10,:1x,a)', "|VXC(a-b)|_F =", sqrt(sum(vxc_z_**2))
+    print '(a,1x,es17.10,:1x,a)', "|VXC(a+b)|_F =", sqrt(sum(vxc_s**2))
+    print '(a,1x,es17.10,:1x,a)', "|VXC(a-b)|_F =", sqrt(sum(vxc_z**2))
     print '(a,1x,es17.10,:1x,a)', "Runtime XC   =", t_exc
-    end associate
   end if
 
   end block main
@@ -267,12 +257,7 @@ program skala
   call gauxc_delete(status, mwf)
   call gauxc_delete(status, mw)
   call gauxc_delete(status, func)
-  call gauxc_delete(status, intf)
   call gauxc_delete(status, integrator)
-  call gauxc_delete(status, p_s)
-  call gauxc_delete(status, p_z)
-  call gauxc_delete(status, vxc_s)
-  call gauxc_delete(status, vxc_z)
 
 #ifdef GAUXC_HAS_MPI
   call MPI_Finalize(error)
@@ -335,6 +320,64 @@ contains
       val = gauxc_pruningscheme%treutler
     end select
   end function read_pruning_scheme
+
+  subroutine read_matrix_from_hdf5_record(status, mat, file, dataset)
+    use hdf5, only : hid_t, hsize_t, H5F_ACC_RDONLY_F, H5T_NATIVE_DOUBLE, &
+      & h5open_f, h5close_f, h5fopen_f, h5dopen_f, h5dget_space_f, &
+      & h5sget_simple_extent_dims_f, h5dread_f, h5fclose_f, h5dclose_f, h5sclose_f
+    type(gauxc_status_type), intent(out) :: status
+    real(c_double), allocatable :: mat(:,:)
+    character(len=*), intent(in) :: file, dataset
+
+    logical :: file_opened, dataset_opened, dataspace_obtained
+    integer(hid_t) :: file_id, dataset_id, dataspace_id
+    integer :: hdf5_status
+    integer(hsize_t), dimension(2) :: dims, maxdims
+
+    file_opened = .false.
+    dataset_opened = .false.
+    dataspace_obtained = .false.
+    status%code = 0
+
+    h5: block
+    ! Initialize HDF5 Fortran interface
+    call h5open_f(hdf5_status)
+    if (hdf5_status < 0) exit h5
+
+    ! Open the HDF5 file and dataset
+    call h5fopen_f(trim(file), H5F_ACC_RDONLY_F, file_id, hdf5_status)
+    if (hdf5_status < 0) exit h5
+    file_opened = .true.
+
+    call h5dopen_f(file_id, trim(dataset), dataset_id, hdf5_status)
+    if (hdf5_status < 0) exit h5
+    dataset_opened = .true.
+
+    call h5dget_space_f(dataset_id, dataspace_id, hdf5_status)
+    if (hdf5_status < 0) exit h5
+    dataspace_obtained = .true.
+
+    ! Get the dimensions of the dataset
+    call h5sget_simple_extent_dims_f(dataspace_id, dims, maxdims, hdf5_status)
+    if (hdf5_status < 0) exit h5
+
+    ! Allocate the matrix and read the data
+    allocate(mat(dims(1), dims(2)))
+    call h5dread_f(dataset_id, H5T_NATIVE_DOUBLE, mat, dims, hdf5_status)
+    if (hdf5_status < 0) exit h5
+    end block h5
+
+    if (hdf5_status < 0) then
+      status%code = 1
+      if (allocated(mat)) deallocate(mat)
+    end if
+
+    ! Close HDF5 resources (reverse order)
+    if (dataspace_obtained) call h5sclose_f(dataspace_id, hdf5_status)
+    if (dataset_opened) call h5dclose_f(dataset_id, hdf5_status)
+    if (file_opened) call h5fclose_f(file_id, hdf5_status)
+    call h5close_f(hdf5_status)
+  end subroutine read_matrix_from_hdf5_record
 
   function timing() result(time)
     real(c_double) :: time

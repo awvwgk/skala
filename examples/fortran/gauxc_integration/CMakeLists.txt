@@ -13,6 +13,7 @@ option(Skala_GauXC_ENABLE_MPI "Enable MPI support in GauXC" OFF)
 option(Skala_GauXC_ENABLE_CUDA "Enable CUDA support in GauXC" OFF)
 
 include(skala-dep-versions)
+include(skala-hdf5)
 include(skala-gauxc)
 include(skala-flap)
 
@@ -25,6 +26,7 @@ target_link_libraries(
   PRIVATE
   gauxc::gauxc
   FLAP::FLAP
+  HDF5::HDF5
 )
 if(GAUXC_HAS_MPI)
   find_package(MPI REQUIRED)

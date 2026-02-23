@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <math.h>
 
 // For GauXC core functionality
 #include <gauxc/types.h>
@@ -15,9 +16,9 @@
 #include <gauxc/molecular_weights.h>
 #include <gauxc/functional.h>
 #include <gauxc/xc_integrator.h>
-#include <gauxc/matrix.h>
 
 // For HDF5 I/O
+#include <hdf5.h>
 #include <gauxc/external/hdf5.h>
 
 // For command line interface
@@ -81,6 +82,86 @@ read_pruning_scheme(GauXCStatus* status, const char* spec)
     return GauXC_PruningScheme_Treutler;
   status->message = "Invalid pruning scheme specification";
   status->code = 1;
+}
+
+void
+read_matrix_from_hdf5_record(GauXCStatus* status, double** mat, int64_t* n, const char* file, const char* dataset)
+{
+  status->code = 0;
+  *mat = NULL;
+  bool file_opened = false, dataset_opened = false, dataspace_opened = false;
+  hid_t hdf5_file = H5Fopen(file, H5F_ACC_RDONLY, H5P_DEFAULT);
+  if (hdf5_file < 0) {
+    status->message = "Failed to open HDF5 file"; status->code = 1;
+    goto err;
+  }
+  file_opened = true;
+
+  hid_t hdf5_dataset = H5Dopen2(hdf5_file, dataset, H5P_DEFAULT);
+  if (hdf5_dataset < 0) {
+    status->message = "Failed to open HDF5 dataset";
+    status->code = 1;
+    goto err;
+  }
+  dataset_opened = true;
+
+  hid_t hdf5_dataspace = H5Dget_space(hdf5_dataset);
+  if (hdf5_dataspace < 0) {
+    status->message = "Failed to get HDF5 dataspace";
+    status->code = 1;
+    goto err;
+  }
+  dataspace_opened = true;
+
+  int ndims = H5Sget_simple_extent_ndims(hdf5_dataspace);
+  if (ndims != 2) {
+    status->message = "Expected 2D dataset in HDF5 file";
+    status->code = 1;
+    goto err;
+  }
+
+  hsize_t dims[2];
+  H5Sget_simple_extent_dims(hdf5_dataspace, dims, NULL);
+  *n = dims[0];
+  if (dims[1] != dims[0]) {
+    status->message = "Expected square matrix dataset in HDF5 file";
+    status->code = 1;
+    goto err;
+  }
+
+  *mat = (double*)malloc(dims[0] * dims[1] * sizeof(double));
+  if (*mat == NULL) {
+    status->message = "Failed to allocate memory for matrix";
+    status->code = 1;
+    goto err;
+  }
+
+  herr_t err = H5Dread(hdf5_dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, *mat);
+  if (err < 0) {
+    status->message = "Failed to read matrix data from HDF5 dataset";
+    status->code = 1;
+    free(*mat);
+    *mat = NULL;
+    goto err;
+  }  
+
+err:
+  if (dataspace_opened) H5Sclose(hdf5_dataspace);
+  if (dataset_opened) H5Dclose(hdf5_dataset);
+  if (file_opened) H5Fclose(hdf5_file);
+}
+
+inline static double
+matrix_norm(const int64_t m, const int64_t n, const double* mat, const int64_t ld)
+{
+  double norm = 0.0;
+  for (int64_t i = 0; i < m; ++i) {
+    for (int64_t j = 0; j < n; ++j) {
+      double val = mat[i * ld + j];
+      norm += val * val;
+    }
+  }
+  return sqrt(norm);
 }
 
 inline static char * arg_strcpy(struct arg_str * arg, char * default_str)
@@ -239,7 +320,7 @@ main(int argc, char** argv)
   GauXCLoadBalancerFactory lb_factory = gauxc_load_balancer_factory_new(&status, lb_exec_space, "Replicated");
   objs[nobj++] = &lb_factory;
   if (status.code) goto err;
-  GauXCLoadBalancer lb = gauxc_load_balancer_factory_get_shared_instance(&status, lb_factory, rt, mol, grid, basis);
+  GauXCLoadBalancer lb = gauxc_load_balancer_factory_get_instance(&status, lb_factory, rt, mol, grid, basis);
   objs[nobj++] = &lb;
   if (status.code) goto err;
 
@@ -259,28 +340,18 @@ main(int argc, char** argv)
   GauXCFunctional func = gauxc_functional_from_string(&status, "PBE", true);
   objs[nobj++] = &func;
   if (status.code) goto err;
-  GauXCIntegratorFactory integrator_factory = gauxc_integrator_factory_new(&status, int_exec_space,
+  GauXCIntegrator integrator = gauxc_integrator_new(&status, func, lb, int_exec_space,
     "Replicated", "Default", "Default", "Default");
-  objs[nobj++] = &integrator_factory;
-  if (status.code) goto err;
-  GauXCIntegrator integrator = gauxc_integrator_factory_get_instance(&status, integrator_factory, func, lb);
   objs[nobj++] = &integrator;
   if (status.code) goto err;
 
-  // Configure model checkpoint
-  // GauXCOneDFTSettings onedft_settings;
-  // onedft_settings.model = model;
-
   // Load density matrix from input
-  GauXCMatrix P_s = gauxc_matrix_empty(&status);
-  objs[nobj++] = &P_s;
+  int64_t nbf;
+  double* P_s = NULL;
+  double* P_z = NULL;
+  read_matrix_from_hdf5_record(&status, &P_s, &nbf, input_file, "/DENSITY_SCALAR");
   if (status.code) goto err;
-  GauXCMatrix P_z = gauxc_matrix_empty(&status);
-  objs[nobj++] = &P_z;
-  if (status.code) goto err;
-  gauxc_matrix_read_hdf5_record(&status, P_s, input_file, "/DENSITY_SCALAR");
-  if (status.code) goto err;
-  gauxc_matrix_read_hdf5_record(&status, P_z, input_file, "/DENSITY_Z");
+  read_matrix_from_hdf5_record(&status, &P_z, &nbf, input_file, "/DENSITY_Z");
   if (status.code) goto err;
 
 #ifdef GAUXC_HAS_MPI
@@ -289,14 +360,10 @@ main(int argc, char** argv)
 
   // Integrate exchange correlation energy
   double EXC;
-  GauXCMatrix VXC_s = gauxc_matrix_empty(&status);
-  objs[nobj++] = &VXC_s;
-  if (status.code) goto err;
-  GauXCMatrix VXC_z = gauxc_matrix_empty(&status);
-  objs[nobj++] = &VXC_z;
-  if (status.code) goto err;
-
-  gauxc_integrator_eval_exc_vxc_onedft_uks(&status, integrator, P_s, P_z, model, &EXC, &VXC_s, &VXC_z);
+  double* VXC_s = (double*)malloc(nbf * nbf * sizeof(double));
+  double* VXC_z = (double*)malloc(nbf * nbf * sizeof(double));
+  gauxc_integrator_eval_exc_vxc_onedft_uks(&status, integrator,
+    nbf, nbf, P_s, nbf, P_z, nbf, model, &EXC, VXC_s, nbf, VXC_z, nbf);
   if (status.code) goto err;
 
 #ifdef GAUXC_HAS_MPI
@@ -305,7 +372,9 @@ main(int argc, char** argv)
 
   if(!world_rank && !status.code) {
     printf("Results\n");
-    printf("-> EXC : %.10f\n", EXC);
+    printf("-> EXC          : %.10f\n", EXC);
+    printf("-> |VXC(a+b)|_F : %.10f\n", matrix_norm(nbf, nbf, VXC_s, nbf));
+    printf("-> |VXC(a-b)|_F : %.10f\n", matrix_norm(nbf, nbf, VXC_z, nbf));
     printf("\n");
   }
 
@@ -324,6 +393,10 @@ err:
   free(prune_spec);
   free(lb_exec_space_str);
   free(int_exec_space_str);
+  free(P_s);
+  free(P_z);
+  free(VXC_s);
+  free(VXC_z);
   gauxc_objects_delete(&status, objs, nobj);
   if (status.code) {
     fprintf(stderr, "Error during cleanup (code %d)", status.code);

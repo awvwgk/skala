@@ -27,7 +27,8 @@ The directory structure for the project will be
    └── cmake
        ├── skala-flap.cmake
        ├── skala-dep-versions.cmake
-       └── skala-gauxc.cmake
+       ├── skala-gauxc.cmake
+       └── skala-hdf5.cmake
 
 First, we create the main ``CMakeLists.txt`` to define our project, include dependencies, and declare the executable.
 
@@ -57,6 +58,12 @@ For the command-line interface, we use the `FLAP library <https://github.com/sza
    :language: cmake
    :caption: cmake/skala-flap.cmake
 
+Finally, we will use the HDF5 C library for reading our input data from an HDF5 file.
+
+.. literalinclude:: ../../examples/c/gauxc_integration/cmake/skala-hdf5.cmake
+   :language: cmake
+   :caption: cmake/skala-hdf5.cmake
+
 This completes the CMake setup required for our command-line driver.
 
 Module imports
@@ -68,7 +75,7 @@ We also use GauXC's HDF5 I/O module and the FLAP module for command-line parsing
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90
-   :lines: 1-31
+   :lines: 1-28
 
 Each GauXC component has a corresponding Fortran module:
 
@@ -99,22 +106,19 @@ Each GauXC component has a corresponding Fortran module:
 `gauxc_integrator`
   Performs the numerical integration of the exchange-correlation energy and potential.
 
-`gauxc_matrix`
-  Manages matrix data structures (density matrices, potentials).
-
 Next, we declare variables for the GauXC-specific types:
 
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90
-   :lines: 33-45
+   :lines: 32-43
 
 We also declare variables for input parameters and intermediate values:
 
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90
-   :lines: 47-55
+   :lines: 45-53
 
 When compiled with MPI support, we initialize MPI at program startup.
 The ``gauxc/gauxc_config.f`` header provides the ``GAUXC_HAS_MPI`` preprocessor macro for guarding MPI-specific calls.
@@ -122,14 +126,14 @@ The ``gauxc/gauxc_config.f`` header provides the ``GAUXC_HAS_MPI`` preprocessor 
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90
-   :lines: 57-59
+   :lines: 55-57
 
 Similarly, at the end of the program we finalize MPI:
 
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90
-   :lines: 277-279
+   :lines: 262-264
 
 Command line interface
 ----------------------
@@ -160,7 +164,7 @@ First, we initialize variables with their default values:
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90
-   :lines: 61-66
+   :lines: 59-64
 
 Next, we initialize the CLI and define the available arguments.
 A named ``block`` statement provides convenient error handling:
@@ -168,7 +172,7 @@ A named ``block`` statement provides convenient error handling:
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90
-   :lines: 68-94,134-142
+   :lines: 66-92,132-140
 
 .. note::
 
@@ -179,7 +183,7 @@ After defining the CLI, we parse it within the ``input`` block and retrieve the 
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90
-   :lines: 96-133
+   :lines: 94-131
 
 Before adding further implementation, let's build and test the project.
 Configure and compile with:
@@ -248,14 +252,14 @@ All GauXC-related calls are placed inside a named ``block`` for streamlined erro
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90
-   :lines: 148-159
+   :lines: 146-157
 
 At the end of the block, we check the status and clean up the runtime environment:
 
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90
-   :lines: 255-261
+   :lines: 245-250
 
 The runtime environment provides the MPI world rank and size (for both MPI and non-MPI builds).
 We print the configuration obtained from the command line:
@@ -263,7 +267,7 @@ We print the configuration obtained from the command line:
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90
-   :lines: 161-170
+   :lines: 159-168
 
 From here on, we use ``world_rank`` to ensure only rank 0 produces output.
 
@@ -296,14 +300,14 @@ The ``gauxc_read_hdf5_record`` subroutine loads the molecule data:
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (read molecule)
-   :lines: 172-177
+   :lines: 170-175
 
 For proper memory management, we free the molecule object at program end:
 
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (free molecule)
-   :lines: 262
+   :lines: 252
 
 
 Basis set data
@@ -340,14 +344,14 @@ We read the basis set using ``gauxc_read_hdf5_record``:
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (read basisset)
-   :lines: 179-184
+   :lines: 177-182
 
 We free the basis set at program end:
 
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (free basisset)
-   :lines: 263
+   :lines: 253
 
 Integration grid
 ----------------
@@ -364,7 +368,7 @@ GauXC uses enumerators for these settings. We define helper functions to convert
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (enumerator conversion functions)
-   :lines: 281,294-337
+   :lines: 266,279-322
 
 We create the molecular grid from our input parameters.
 The batch size controls how many grid points are processed together; larger values (up to ~10000)
@@ -373,14 +377,14 @@ improve performance, though the default is 512:
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (grid setup)
-   :lines: 186-191
+   :lines: 184-189
 
 We free the grid at program end:
 
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (free grid)
-   :lines: 264
+   :lines: 254
 
 Exchange-correlation integrator
 -------------------------------
@@ -391,7 +395,7 @@ A helper function converts the execution-space CLI string to an enumerator:
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (execution space enumerator)
-   :lines: 281-292
+   :lines: 266-277
 
 The load balancer manages access to the molecule, basis, and grid data for all subsequent GauXC operations.
 We create it from our input parameters:
@@ -399,40 +403,41 @@ We create it from our input parameters:
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (load balancer setup)
-   :lines: 193-210
+   :lines: 191-207
 
-Finally, we create the XC integrator using a factory pattern.
-A settings object specifies the model checkpoint to evaluate:
+Finally, we create the XC integrator.
+The functional and load balancer are passed directly to the integrator constructor:
 
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (integrator setup)
-   :lines: 212-218
+   :lines: 209-212
 
 We free the integrator and associated objects at program end:
 
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (free integrator)
-   :lines: 265-271
+   :lines: 255-260
 
 Density matrix
 --------------
 
 The density matrix is the final input for GauXC.
-We read it from the HDF5 file:
+Unlike the molecule and basis set, we read the density matrix using our own HDF5 helper subroutine ``read_matrix_from_hdf5_record``.
+This subroutine opens the HDF5 file, reads a 2D dataset into an allocatable array, and performs error handling for each HDF5 operation.
+
+.. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
+   :language: fortran
+   :caption: app/main.F90 (HDF5 matrix reader)
+   :lines: 324-380
+
+With this helper we can read the density matrices from the input file:
 
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (read density matrix)
-   :lines: 220-226
-
-We free the density matrix at program end:
-
-.. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
-   :language: fortran
-   :caption: app/main.F90 (free density matrix)
-   :lines: 272-273
+   :lines: 214-218
 
 Exchange-correlation evaluation
 -------------------------------
@@ -442,7 +447,7 @@ With all inputs ready, we perform the XC evaluation:
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (exchange-correlation evaluation)
-   :lines: 233-237
+   :lines: 225-229
 
 .. tip::
 
@@ -451,28 +456,21 @@ With all inputs ready, we perform the XC evaluation:
    .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
       :language: fortran
       :caption: app/main.F90 (time helper function)
-      :lines: 339-344
+      :lines: 382-387
 
    Use it to wrap the evaluation and print elapsed time:
 
    .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
       :language: fortran
       :caption: app/main.F90 (timed exchange-correlation evaluation)
-      :lines: 228-243
+      :lines: 220-243
 
 We output the computed XC energy:
 
 .. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
    :language: fortran
    :caption: app/main.F90 (exchange-correlation output)
-   :lines: 245-253
-
-We free the allocated XC potential matrices at program end:
-
-.. literalinclude:: ../../examples/fortran/gauxc_integration/app/main.F90
-   :language: fortran
-   :caption: app/main.F90 (free exchange-correlation potential)
-   :lines: 274-275
+   :lines: 237-243
 
 Rebuild the project:
 

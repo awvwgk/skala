@@ -13,6 +13,7 @@ option(Skala_GauXC_ENABLE_MPI "Enable MPI support in GauXC" OFF)
 option(Skala_GauXC_ENABLE_CUDA "Enable CUDA support in GauXC" OFF)
 
 include(skala-dep-versions)
+include(skala-hdf5)
 include(skala-gauxc)
 include(skala-argtable3)
 
@@ -25,6 +26,7 @@ target_link_libraries(
   PRIVATE
   gauxc::gauxc
   argtable3::argtable3
+  HDF5::HDF5
 )
 install(
   TARGETS
