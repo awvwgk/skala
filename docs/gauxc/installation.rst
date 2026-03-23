@@ -8,7 +8,7 @@ As part of this tutorial we will be
 
 * installing dependencies for building GauXC
 * configuring GauXC with different options
-* testing our the Skala implementation in GauXC
+* testing the Skala implementation in GauXC
 * installing the GauXC library
 * reusing GauXC from the CMake build system
 
@@ -25,7 +25,6 @@ We provide three different configurations depending on whether you want to build
 .. note::
 
    A full list of dependencies can be found at :ref:`gauxc-cmake-deps` in the CMake configuration documentation.
-
 
 For this, create a file named `environment.yml` with the following content:
 
@@ -85,6 +84,13 @@ Download the pre-packaged source bundle from the Skala release page:
       tar xzvf gauxc-skala-r1.tar.gz
 
 The archive expands into a ``gauxc`` directory that already contains the Skala patches.
+One convenient layout is
+
+.. code-block:: text
+
+   work/
+   ├── gauxc/
+   └── build/
 
 .. note::
 
