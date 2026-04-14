@@ -24,6 +24,7 @@ Please stay tuned for updates and new releases.
 
    installation
    pyscf/singlepoint
+   pyscf/gpu4pyscf
    pyscf/scf_settings
    ase
    ftorch
