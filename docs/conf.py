@@ -19,6 +19,7 @@ nb_merge_streams = True  # Merge multiple outputs from the same cell into one bo
 
 bibtex_bibfiles = [
     "_static/bib/gauxc.bib",
+    "_static/bib/data.bib",
 ]
 
 html_theme = "sphinx_book_theme"
@@ -26,3 +27,4 @@ html_title = project
 html_logo = "_static/img/density.png"
 html_favicon = "_static/img/density.png"
 master_doc = "index"
+exclude_patterns = ["_build", "jupyter_execute"]
