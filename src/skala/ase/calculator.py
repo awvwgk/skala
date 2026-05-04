@@ -163,6 +163,7 @@ class Skala(Calculator):
             self._mol = self._mol.set_geom_(atom, inplace=False)
 
         if self._ks is None:
+            dm0 = None
             if not isinstance(xc_param := self.parameters.xc, (ExcFunctionalBase, str)):  # type: ignore
                 raise InputError("XC functional must be a string or ExcFunctionalBase.")
             grad_method = SkalaKS(
@@ -176,13 +177,21 @@ class Skala(Calculator):
             ).nuc_grad_method()
             self._ks = grad_method
         else:
+            # Mimic PySCF's SCF_Scanner (hf.py:1569-1588): convert old MOs
+            # into a density-matrix guess, wipe mo_coeff so Newton won't
+            # reuse stale (non-orthogonal w.r.t. new overlap) orbitals,
+            # and let the solver re-diagonalise the Fock matrix.
+            dm0 = None
+            if self._ks.base.mo_coeff is not None:
+                dm0 = self._ks.base.make_rdm1()
             self._ks.reset(self._mol)
+            self._ks.base.mo_coeff = None
 
-        if self.parameters.with_retry:  # type: ignore
+        if self.parameters.with_retry and dm0 is None:  # type: ignore
             self._ks.base, _ = retry_scf(self._ks.base)
             energy = self._ks.base.e_tot
         else:
-            energy = self._ks.base.kernel()
+            energy = self._ks.base.kernel(dm0=dm0)
         gradient = self._ks.kernel()
 
         self.results["energy"] = float(energy) * Hartree
