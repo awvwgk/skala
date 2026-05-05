@@ -14,9 +14,15 @@ from ase.calculators.calculator import (
 from ase.units import Bohr, Debye, Hartree
 from pyscf import grad, gto
 
+import skala.pyscf as skala_cpu
 from skala.functional.base import ExcFunctionalBase
-from skala.pyscf import SkalaKS
 from skala.pyscf.retry import retry_scf
+
+try:
+    import skala.gpu4pyscf as skala_gpu
+except ImportError as e:
+    skala_gpu = None  # type: ignore[assignment]
+    gpu4pyscf_import_error = e
 
 
 class Skala(Calculator):
@@ -49,6 +55,7 @@ class Skala(Calculator):
         "multiplicity": None,
         "verbose": 0,
         "ks_config": None,
+        "device": "cpu",
     }
 
     _mol: gto.Mole | None = None
@@ -94,6 +101,7 @@ class Skala(Calculator):
             or "auxbasis" in changed_parameters
             or "with_newton" in changed_parameters
             or "with_dftd3" in changed_parameters
+            or "device" in changed_parameters
         ):
             self._ks = None
             self.reset()
@@ -166,16 +174,28 @@ class Skala(Calculator):
             dm0 = None
             if not isinstance(xc_param := self.parameters.xc, (ExcFunctionalBase, str)):  # type: ignore
                 raise InputError("XC functional must be a string or ExcFunctionalBase.")
-            grad_method = SkalaKS(
-                self._mol,
+            device = self.parameters.device  # type: ignore
+            _kwargs = dict(
+                mol=self._mol,
                 xc=xc_param,
                 with_density_fit=bool(self.parameters.with_density_fit),  # type: ignore
                 auxbasis=self.parameters.auxbasis,  # type: ignore
                 with_newton=bool(self.parameters.with_newton),  # type: ignore
                 with_dftd3=bool(self.parameters.with_dftd3),  # type: ignore
                 ks_config=self.parameters.ks_config,  # type: ignore
-            ).nuc_grad_method()
-            self._ks = grad_method
+            )
+            if device == "cuda":
+                if skala_gpu is None:
+                    raise ImportError(
+                        "gpu4pyscf is not available. Please install gpu4pyscf to use GPU acceleration."
+                    ) from gpu4pyscf_import_error
+                ks = skala_gpu.SkalaKS(**_kwargs)
+            elif device == "cpu":
+                ks = skala_cpu.SkalaKS(**_kwargs)
+            else:
+                raise InputError(f"Unsupported device type: {device}")
+
+            self._ks = ks.nuc_grad_method()
         else:
             # Mimic PySCF's SCF_Scanner (hf.py:1569-1588): convert old MOs
             # into a density-matrix guess, wipe mo_coeff so Newton won't
