@@ -67,6 +67,7 @@ cp.cuda.set_allocator(cp.get_default_memory_pool().malloc)
 
 from skala.functional.base import ExcFunctionalBase
 from skala.gpu4pyscf.gradients import SkalaRKSGradient, SkalaUKSGradient
+from skala.gpu4pyscf.grids import UnsortableGrids
 from skala.pyscf.dft import _build_grids_unsorted, _needs_unsorted_grids
 from skala.pyscf.numint import SkalaNumInt
 from skala.pyscf.utils import pyscf_version_newer_than_2_10
@@ -77,6 +78,12 @@ class SkalaRKS(dft.rks.RKS):  # type: ignore[misc]
 
     with_dftd3: DFTD3Dispersion | None = None
     """DFT-D3 dispersion correction."""
+
+    grids: dft.gen_grid.Grids
+    """Grids object"""
+
+    cphf_grids: dft.gen_grid.Grids
+    """Grids object for CPHF"""
 
     def __init__(
         self, mol: gto.Mole, xc: ExcFunctionalBase, *, with_dftd3: bool = True
@@ -92,15 +99,11 @@ class SkalaRKS(dft.rks.RKS):  # type: ignore[misc]
 
         self._needs_unsorted = _needs_unsorted_grids(xc)
         if self._needs_unsorted:
+            self.grids = UnsortableGrids(mol)(level=self.grids.level)
+            self.cphf_grids = UnsortableGrids(mol)(
+                prune=self.cphf_grids.prune, atom_grid=self.cphf_grids.atom_grid
+            )
             _build_grids_unsorted(self.grids, mol)
-
-    def initialize_grids(
-        self, mol: gto.Mole | None = None, dm: Any = None
-    ) -> "SkalaRKS":
-        # Ensure grids stay unsorted even if user changed grid settings after __init__
-        if self._needs_unsorted and self.grids.coords is None:
-            _build_grids_unsorted(self.grids, mol or self.mol)
-        return super().initialize_grids(mol or self.mol, dm)
 
     def energy_nuc(self) -> float:
         enuc = float(super().energy_nuc())
@@ -159,6 +162,12 @@ class SkalaUKS(dft.uks.UKS):  # type: ignore[misc]
     with_dftd3: DFTD3Dispersion | None = None
     """DFT-D3 dispersion correction."""
 
+    grids: dft.gen_grid.Grids
+    """Grids object"""
+
+    cphf_grids: dft.gen_grid.Grids
+    """Grids object for CPHF"""
+
     def __init__(
         self, mol: gto.Mole, xc: ExcFunctionalBase, *, with_dftd3: bool = True
     ):
@@ -173,15 +182,11 @@ class SkalaUKS(dft.uks.UKS):  # type: ignore[misc]
 
         self._needs_unsorted = _needs_unsorted_grids(xc)
         if self._needs_unsorted:
+            self.grids = UnsortableGrids(mol)(level=self.grids.level)
+            self.cphf_grids = UnsortableGrids(mol)(
+                prune=self.cphf_grids.prune, atom_grid=self.cphf_grids.atom_grid
+            )
             _build_grids_unsorted(self.grids, mol)
-
-    def initialize_grids(
-        self, mol: gto.Mole | None = None, dm: Any = None
-    ) -> "SkalaUKS":
-        # Ensure grids stay unsorted even if user changed grid settings after __init__
-        if self._needs_unsorted and self.grids.coords is None:
-            _build_grids_unsorted(self.grids, mol or self.mol)
-        return super().initialize_grids(mol or self.mol, dm)
 
     def energy_nuc(self) -> float:
         enuc = float(super().energy_nuc())
@@ -232,3 +237,21 @@ class SkalaUKS(dft.uks.UKS):  # type: ignore[misc]
         ks.Gradients = lambda: SkalaUKSGradient(ks)
         ks.nuc_grad_method = ks.Gradients
         return cast(SkalaUKS, ks)
+
+
+# GPU4PySCF does not have a initialize_grids method, but a module level function that is called by the RKS and UKS classes.
+# We need to monkeypatch this function to ensure that grids are initialized as unsorted when needed.
+original_initialize_grids = dft.rks.initialize_grids
+
+
+def initialize_grids(
+    ks: dft.rks.KohnShamDFT, mol: gto.Mole | None = None, dm: Any = None
+) -> dft.rks.KohnShamDFT:
+    if getattr(ks, "_needs_unsorted", False) and ks.grids.coords is None:
+        _build_grids_unsorted(ks.grids, mol or ks.mol)
+        return ks
+
+    return original_initialize_grids(ks, mol, dm)
+
+
+dft.rks.initialize_grids = initialize_grids
