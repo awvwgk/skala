@@ -1,9 +1,10 @@
+from collections.abc import Callable
+
 import pytest
 import torch
 from _ridders import num_grad_ridders
 from pyscf import dft, gto, scf
 
-from skala.functional import load_functional
 from skala.functional.base import ExcFunctionalBase
 from skala.pyscf import SkalaKS
 from skala.pyscf.features import generate_features
@@ -436,10 +437,14 @@ FULL_GRAD_REF = {
 }
 
 
-def test_full_grad(mol_name: str, xc_name: str) -> None:
+def test_full_grad(
+    mol_name: str,
+    xc_name: str,
+    load_functional_cached: Callable[..., ExcFunctionalBase | str],
+) -> None:
     # analytical result
     mol = get_mol(mol_name)
-    func = load_functional(xc_name)
+    func = load_functional_cached(xc_name)
     assert isinstance(func, ExcFunctionalBase)
 
     scf = run_scf(mol, func, with_dftd3=False)
