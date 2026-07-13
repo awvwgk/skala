@@ -94,6 +94,23 @@ def test_skala_class(
         assert isinstance(ks.grids, UnsortableGrids)
 
 
+def test_skala_class_with_dftd3_and_native_functional_raises() -> None:
+    """Test that using DFT-D3 with a native PySCF functional raises an error."""
+    mol = gto.M(atom="H 0 0 0; H 0 0 0.74", basis="sto-3g", verbose=0)
+    with pytest.raises(
+        ValueError, match="DFT-D3 dispersion correction is not supported"
+    ):
+        SkalaKS(mol, xc="b3lyp", with_dftd3=True)
+
+
+def test_skala_class_with_native_functional_and_no_dftd3_is_allowed() -> None:
+    """Native PySCF functionals should be allowed when DFT-D3 is disabled."""
+    mol = gto.M(atom="H 0 0 0; H 0 0 0.74", basis="sto-3g", verbose=0)
+    ks = SkalaKS(mol, xc="b3lyp", with_dftd3=False)
+    assert ks.xc == "b3lyp"
+    assert not isinstance(ks, (SkalaRKS, SkalaUKS))
+
+
 def test_grid_alignment_mismatch_raises(
     load_functional_cached: Callable[..., ExcFunctionalBase | str],
 ) -> None:
