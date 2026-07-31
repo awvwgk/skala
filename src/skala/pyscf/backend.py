@@ -14,14 +14,14 @@ from torch import Tensor
 GPU_EXCEPTION: BaseException | None = None
 
 __all__ = [
+    "KS",
     "Array",
     "Grid",
-    "KS",
-    "dft_gpu",
     "check_gpu_imports_were_successful",
+    "dft_gpu",
     "from_numpy_or_cupy",
-    "to_numpy",
     "to_cupy",
+    "to_numpy",
 ]
 
 
@@ -39,6 +39,21 @@ else:
     try:
         import cupy
         from gpu4pyscf import dft as dft_gpu
+
+        from skala.utils.torch_allocator import use_torch_mempool_in_cupy
+
+        # Install this last because GPU4PySCF configures its own CuPy allocator during import.
+        # Subsequent CuPy allocations use PyTorch's caching allocator
+        if not torch.cuda.is_available():
+            raise ImportError(
+                "CUDA is not available; cannot configure CuPy to use the PyTorch allocator."
+            )
+        try:
+            use_torch_mempool_in_cupy()
+        except RuntimeError as e:
+            raise ImportError(
+                "Failed to configure CuPy to use the PyTorch allocator."
+            ) from e
 
         Array = TypeVar("Array", np.ndarray, cupy.ndarray)
         Grid: TypeAlias = dft.Grids | dft_gpu.Grids

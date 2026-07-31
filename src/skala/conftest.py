@@ -13,6 +13,7 @@ their own ``pytest.skip`` guard.
 
 This file lives in ``src/skala/`` rather than ``src/skala/gpu4pyscf/`` so
 pytest can load it without first importing ``skala.gpu4pyscf``.
+Similar problems arise for torch_allocator and cupy.
 """
 
 import torch
@@ -21,3 +22,4 @@ collect_ignore_glob: list[str] = []
 
 if not torch.cuda.is_available():
     collect_ignore_glob.append("gpu4pyscf/*.py")
+    collect_ignore_glob.append("utils/torch_allocator.py")
