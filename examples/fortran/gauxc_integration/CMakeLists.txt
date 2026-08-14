@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.20 FATAL_ERROR)
 
-project("Skala" LANGUAGES Fortran C CXX)
+# Enable C/C++ first so conda's compiler wrappers lead CMake to the matching
+# gfortran instead of the system f95, whose module format may be incompatible.
+project("Skala" LANGUAGES C CXX Fortran)
 
 include(GNUInstallDirs)
 include(FetchContent)
@@ -21,6 +23,9 @@ add_executable(
   "${PROJECT_NAME}"
   "app/main.F90"
 )
+# GauXC links to C++ libraries such as LibTorch, so use the C++ driver while
+# CMake adds the Fortran runtime required by this target's Fortran source.
+set_property(TARGET "${PROJECT_NAME}" PROPERTY LINKER_LANGUAGE CXX)
 target_link_libraries(
   "${PROJECT_NAME}"
   PRIVATE
