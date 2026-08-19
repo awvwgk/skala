@@ -4,20 +4,12 @@ import pytest
 import torch
 from torch.utils.dlpack import from_dlpack
 
+from tests.utils import FULL_GRAD_REF, force_ao_screening, require_gpu
+
 pytestmark = pytest.mark.gpu
 
-if not torch.cuda.is_available():
-    pytest.skip(
-        "Skipping gpu4pyscf gradients tests, because CUDA is not available.",
-        allow_module_level=True,
-    )
-try:
-    import cupy
-except ModuleNotFoundError:
-    pytest.skip(
-        "Skipping gpu4pyscf gradients tests, because CuPy is not available.",
-        allow_module_level=True,
-    )
+cupy = require_gpu()
+
 
 from gpu4pyscf import dft, scf  # noqa: E402
 from pyscf import gto  # noqa: E402
@@ -36,8 +28,6 @@ from skala.pyscf.features import generate_features  # noqa: E402
 from skala.pyscf.gradients import SkalaRKSGradient as CpuSkalaRKSGradient  # noqa: E402
 from skala.utils import torch_allocator  # noqa: E402
 from tests.ridders import num_grad_ridders  # noqa: E402
-from tests.test_pyscf_gradients import FULL_GRAD_REF  # noqa: E402
-from tests.utils import force_ao_screening  # noqa: E402
 
 H2_SKALA_1_1_GRAD_REF = torch.tensor(
     [
@@ -74,8 +64,16 @@ def test_torch_allocator_uses_shared_non_default_stream() -> None:
     with torch.cuda.stream(torch_stream), cupy_stream:
         torch_allocator.use_torch_mempool_in_cupy()
         array = cupy.empty(1)
+        device_id = array.device.id
+        # Release the block and drop it from PyTorch's cache while the stream is
+        # still alive. Cached blocks that outlive their stream make later
+        # allocations record events on a destroyed stream, which corrupts the
+        # CUDA context of subsequent tests.
+        del array
+        torch.cuda.synchronize()
+        torch.cuda.empty_cache()
 
-    assert array.device.id == torch_stream.device.index
+    assert device_id == torch_stream.device.index
 
 
 def test_torch_allocator_rejects_mismatched_streams() -> None:

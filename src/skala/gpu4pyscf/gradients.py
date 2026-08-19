@@ -3,6 +3,7 @@
 """Modification of PySCF nuclear gradient object to work with Skala functional."""
 
 import logging
+from typing import Any
 
 import cupy as cp
 import numpy as np
@@ -357,7 +358,9 @@ class SkalaRKSGradient(RHFGradient):  # type: ignore[misc]
         nuc_g += disp_g
         return nuc_g
 
-    def extra_force(self, atom_id: int | None = None) -> int:
+    def extra_force(
+        self, atom_id: int | None = None, envs: dict[str, Any] | None = None
+    ) -> int:
         return 0
 
     def reset(self, mol: gto.Mole | None = None) -> "SkalaRKSGradient":
@@ -455,7 +458,9 @@ class SkalaUKSGradient(UHFGradient):  # type: ignore[misc]
         nuc_g += disp_g
         return nuc_g
 
-    def extra_force(self, atom_id: int | None = None) -> int:
+    def extra_force(
+        self, atom_id: int | None = None, envs: dict[str, Any] | None = None
+    ) -> int:
         return 0
 
     def reset(self, mol: gto.Mole | None = None) -> "SkalaUKSGradient":
