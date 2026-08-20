@@ -20,6 +20,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          lfs: true
 
       - name: Print CPU diagnostics
         uses: ./.github/actions/cpu-diagnostics
@@ -53,7 +55,8 @@ jobs:
 
       - name: Check external links
         run: |
-          sphinx-build -b linkcheck docs docs/_build/linkcheck
+          # The HTML build above executes notebooks; linkcheck only needs their links.
+          sphinx-build -D nb_execution_mode=off -b linkcheck docs docs/_build/linkcheck
         shell: micromamba-shell {0}
 
       - name: Upload Pages artifact
