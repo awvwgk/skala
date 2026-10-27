@@ -48,7 +48,7 @@ Both environments provide unconstrained `pip` and `py-spy` installations so thos
 do not impose version requirements on the rest of the environment.
 
 Named compatibility environments cover Python 3.11 through 3.13, PySCF 2.14,
-PyTorch 2.12 and 2.13, GPU4PySCF 1.8.1, and CUDA 12 and 13. Keep `pixi.lock`
+PyTorch 2.12 and 2.13, GPU4PySCF 1.9.0, and CUDA 12 and 13. Keep `pixi.lock`
 synchronized with changes to `pixi.toml` or any component `pyproject.toml`.
 
 
