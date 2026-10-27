@@ -163,6 +163,16 @@ class SkalaRKSGradient(RHFGradient):
     ) -> int:
         return 0
 
+    def reset(
+        self,
+        mol: gto.Mole | None = None,
+    ) -> "SkalaRKSGradient":
+        super().reset(mol)
+        if self.with_dftd3:
+            self.with_dftd3.reset(mol)
+        self.veff_nuc_grad_ = None
+        return self
+
 
 class SkalaUKSGradient(UHFGradient):
     functional: ExcFunctionalBase
@@ -248,3 +258,13 @@ class SkalaUKSGradient(UHFGradient):
             disp_g = disp_g[atmlst]
         nuc_g += disp_g
         return nuc_g
+
+    def reset(
+        self,
+        mol: gto.Mole | None = None,
+    ) -> "SkalaRKSGradient":
+        super().reset(mol)
+        if self.with_dftd3:
+            self.with_dftd3.reset(mol)
+        self.veff_nuc_grad_ = None
+        return self
