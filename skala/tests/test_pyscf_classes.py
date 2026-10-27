@@ -162,7 +162,8 @@ def test_skala_scanner_reset(
         assert scanner_ks.mol is geometry
         assert scanner_ks.grids.mol is geometry
         assert scanner_ks.grids.coords is not None
-        assert energy == pytest.approx(reference_energy, abs=1e-8, rel=0)
+        # Float32 model inference limits agreement between warm and fresh SCF starts.
+        assert energy == pytest.approx(reference_energy, abs=1e-7, rel=0)
         if with_dftd3:
             assert scanner.with_dftd3 is not None
             assert reference.with_dftd3 is not None
