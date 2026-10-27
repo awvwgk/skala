@@ -161,12 +161,16 @@ class SkalaRKS(dft.rks.RKS):
 
     def reset(
         self,
-        mol: gto.Mole,
+        mol: gto.Mole | None = None,
     ) -> "SkalaRKS":
+        """Clear geometry-dependent state, retaining the current molecule if omitted."""
+        if mol is None:
+            mol = self.mol
         self.grids.reset(mol)
         if self.with_dftd3:
             self.with_dftd3.reset(mol)
         return super().reset(mol)
+
 
 class SkalaUKS(dft.uks.UKS):
     """Unrestricted Kohn-Sham method with support for Skala functional."""
@@ -259,8 +263,11 @@ class SkalaUKS(dft.uks.UKS):
 
     def reset(
         self,
-        mol: gto.Mole,
+        mol: gto.Mole | None = None,
     ) -> "SkalaUKS":
+        """Clear geometry-dependent state, retaining the current molecule if omitted."""
+        if mol is None:
+            mol = self.mol
         self.grids.reset(mol)
         if self.with_dftd3:
             self.with_dftd3.reset(mol)
