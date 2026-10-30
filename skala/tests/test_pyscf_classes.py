@@ -10,6 +10,7 @@ from skala.pyscf.gradients import SkalaRKSGradient, SkalaUKSGradient
 from skala.pyscf.grids import SkalaGrids
 
 from pyscf import dft, gto
+from tests.utils import check_skala_scanner_reset
 
 
 @pytest.fixture(params=["skala-1.0", "skala-1.1"])
@@ -114,13 +115,6 @@ def test_skala_scanner_reset(
     gradient: bool,
 ) -> None:
     """Scanners must discard geometry-dependent state and match fresh calculations."""
-    mol = gto.M(
-        atom="H 0 0 0; H 0 0 0.74",
-        basis="sto-3g",
-        charge=spin,
-        spin=spin,
-        verbose=0,
-    )
 
     def make_ks(molecule: gto.Mole) -> SkalaRKS | SkalaUKS:
         ks = SkalaKS(
@@ -135,77 +129,7 @@ def test_skala_scanner_reset(
         ks.conv_tol = 1e-10
         return ks
 
-    ks = make_ks(mol)
-    scanner = ks.nuc_grad_method().as_scanner() if gradient else ks.as_scanner()
-    moved_mol = mol.set_geom_("H 0.1 0.2 0.3; H 0.1 0.2 1.4", inplace=False)
-
-    for geometry in (mol, moved_mol):
-        reference = make_ks(geometry)
-        reference_energy = reference.kernel()
-        assert reference.converged
-
-        if gradient:
-            energy, nuclear_gradient = scanner(geometry)
-            reference_gradient = reference.nuc_grad_method().kernel()
-            assert nuclear_gradient.shape == (geometry.natm, 3)
-            np.testing.assert_allclose(
-                nuclear_gradient, reference_gradient, atol=1e-7, rtol=0
-            )
-            scanner_ks = scanner.base
-            assert scanner.veff_nuc_grad_ is not None
-        else:
-            energy = scanner(geometry)
-            scanner_ks = scanner
-
-        assert scanner_ks.converged
-        assert scanner.mol is geometry
-        assert scanner_ks.mol is geometry
-        assert scanner_ks.grids.mol is geometry
-        assert scanner_ks.grids.coords is not None
-        # Float32 model inference limits agreement between warm and fresh SCF starts.
-        assert energy == pytest.approx(reference_energy, abs=1e-7, rel=0)
-        if with_dftd3:
-            assert scanner.with_dftd3 is not None
-            assert reference.with_dftd3 is not None
-            assert scanner.with_dftd3.get_energy() == pytest.approx(
-                reference.with_dftd3.get_energy(), abs=1e-14, rel=0
-            )
-            np.testing.assert_allclose(
-                scanner.with_dftd3.get_gradient(),
-                reference.with_dftd3.get_gradient(),
-                atol=1e-14,
-                rtol=0,
-            )
-        else:
-            assert scanner.with_dftd3 is None
-
-    assert scanner.reset(mol) is scanner
-    assert scanner.mol is mol
-    assert scanner_ks.mol is mol
-    assert scanner_ks.grids.mol is mol
-    assert scanner_ks.grids.coords is None
-    assert scanner_ks.grids.weights is None
-    assert scanner_ks.grids._spatial_grid_layout is None
-    if gradient:
-        assert scanner.veff_nuc_grad_ is None
-
-    assert scanner.reset() is scanner
-    assert scanner.mol is mol
-    reference = make_ks(mol)
-    if with_dftd3:
-        assert scanner.with_dftd3 is not None
-        assert reference.with_dftd3 is not None
-        assert scanner.with_dftd3.get_energy() == pytest.approx(
-            reference.with_dftd3.get_energy(), abs=1e-14, rel=0
-        )
-    if gradient:
-        assert scanner.base.mol is mol
-        np.testing.assert_allclose(
-            scanner.grad_nuc(),
-            reference.nuc_grad_method().grad_nuc(),
-            atol=1e-14,
-            rtol=0,
-        )
+    check_skala_scanner_reset(make_ks, spin, gradient, with_dftd3)
 
 
 def test_uks_gradient_requires_initialized_grids(skala_xc: ExcFunctionalBase) -> None:

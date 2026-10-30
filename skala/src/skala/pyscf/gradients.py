@@ -2,6 +2,8 @@
 
 """Modification of PySCF nuclear gradient object to work with Skala functional."""
 
+from __future__ import annotations
+
 from collections.abc import Iterator
 from typing import Any
 
@@ -169,10 +171,9 @@ class SkalaRKSGradient(RHFGradient):
     def reset(
         self,
         mol: gto.Mole | None = None,
-    ) -> "SkalaRKSGradient":
+    ) -> SkalaRKSGradient:
+        """Clear geometry-dependent state, including the cached nuclear gradient."""
         super().reset(mol)
-        if self.with_dftd3:
-            self.with_dftd3.reset(self.mol)
         self.veff_nuc_grad_ = None
         return self
 
@@ -268,9 +269,8 @@ class SkalaUKSGradient(UHFGradient):
     def reset(
         self,
         mol: gto.Mole | None = None,
-    ) -> "SkalaUKSGradient":
+    ) -> SkalaUKSGradient:
+        """Clear geometry-dependent state, including the cached nuclear gradient."""
         super().reset(mol)
-        if self.with_dftd3:
-            self.with_dftd3.reset(self.mol)
         self.veff_nuc_grad_ = None
         return self

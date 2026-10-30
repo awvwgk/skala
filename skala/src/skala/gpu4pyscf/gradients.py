@@ -2,6 +2,8 @@
 
 """Modification of PySCF nuclear gradient object to work with Skala functional."""
 
+from __future__ import annotations
+
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any
 
@@ -110,7 +112,7 @@ class SkalaRKSGradient(RHFGradient):
 
     def __init__(
         self,
-        ks: "SkalaRKS | SkalaUKS",
+        ks: SkalaRKS | SkalaUKS,
         verbose: bool = False,
         nuc_grad_feats: set[Feature] | None = None,
     ):
@@ -204,12 +206,11 @@ class SkalaRKSGradient(RHFGradient):
     ) -> int:
         return 0
 
-    def reset(self, mol: gto.Mole | None = None) -> "SkalaRKSGradient":
+    def reset(self, mol: gto.Mole | None = None) -> SkalaRKSGradient:
+        """Clear geometry-dependent state, including the cached nuclear gradient."""
         # This GPU4PySCF method retains the borrowed CPU receiver type.
         # pyrefly: ignore[bad-argument-type]
         super().reset(mol)
-        if self.with_dftd3:
-            self.with_dftd3.reset(self.mol)
         self.veff_nuc_grad_ = None
         return self
 
@@ -231,7 +232,7 @@ class SkalaUKSGradient(UHFGradient):
 
     def __init__(
         self,
-        ks: "SkalaRKS | SkalaUKS",
+        ks: SkalaRKS | SkalaUKS,
         verbose: bool = False,
         nuc_grad_feats: set[Feature] | None = None,
     ):
@@ -327,11 +328,10 @@ class SkalaUKSGradient(UHFGradient):
     ) -> int:
         return 0
 
-    def reset(self, mol: gto.Mole | None = None) -> "SkalaUKSGradient":
+    def reset(self, mol: gto.Mole | None = None) -> SkalaUKSGradient:
+        """Clear geometry-dependent state, including the cached nuclear gradient."""
         # This GPU4PySCF method retains the borrowed CPU receiver type.
         # pyrefly: ignore[bad-argument-type]
         super().reset(mol)
-        if self.with_dftd3:
-            self.with_dftd3.reset(self.mol)
         self.veff_nuc_grad_ = None
         return self

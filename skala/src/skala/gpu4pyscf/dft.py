@@ -51,6 +51,8 @@ The provided classes support the same transformations and methods as the origina
 <pyscf.scf.hf.DFSkalaRKS_Scanner object at ...>
 """
 
+from __future__ import annotations
+
 import warnings
 from collections.abc import Callable
 from typing import Any, cast
@@ -141,7 +143,7 @@ class SkalaRKS(dft.rks.RKS):
         auxbasis: str | None = None,
         with_df: bool | None = None,
         only_dfj: bool | None = False,
-    ) -> "SkalaRKS":
+    ) -> SkalaRKS:
         if pyscf_version_newer_than_2_10() and auxbasis is None:
             warnings.warn(
                 "Using density_fit without specifying auxbasis will lead to different behavior in PySCF >= 2.10.0 compared to PySCF 2.9.0, which was used for benchmarking skala. To reproduce benchmarks, please specify an auxbasis (def2-universal-jkfit for (ma-)def2 basis sets).",
@@ -162,14 +164,12 @@ class SkalaRKS(dft.rks.RKS):
     def reset(
         self,
         mol: gto.Mole | None = None,
-    ) -> "SkalaRKS":
+    ) -> SkalaRKS:
         """Clear geometry-dependent state, retaining the current molecule if omitted."""
-        if mol is None:
-            mol = self.mol
-        self.grids.reset(mol)
+        super().reset(mol)
         if self.with_dftd3:
-            self.with_dftd3.reset(mol)
-        return super().reset(mol)
+            self.with_dftd3.reset(self.mol)
+        return self
 
 
 class SkalaUKS(dft.uks.UKS):
@@ -243,7 +243,7 @@ class SkalaUKS(dft.uks.UKS):
         auxbasis: str | None = None,
         with_df: bool | None = None,
         only_dfj: bool | None = False,
-    ) -> "SkalaUKS":
+    ) -> SkalaUKS:
         if pyscf_version_newer_than_2_10() and auxbasis is None:
             warnings.warn(
                 "Using density_fit without specifying auxbasis will lead to different behavior in PySCF >= 2.10.0 compared to PySCF 2.9.0, which was used for benchmarking skala. To reproduce benchmarks, please specify an auxbasis (def2-universal-jkfit for (ma-)def2 basis sets).",
@@ -264,11 +264,9 @@ class SkalaUKS(dft.uks.UKS):
     def reset(
         self,
         mol: gto.Mole | None = None,
-    ) -> "SkalaUKS":
+    ) -> SkalaUKS:
         """Clear geometry-dependent state, retaining the current molecule if omitted."""
-        if mol is None:
-            mol = self.mol
-        self.grids.reset(mol)
+        super().reset(mol)
         if self.with_dftd3:
-            self.with_dftd3.reset(mol)
-        return super().reset(mol)
+            self.with_dftd3.reset(self.mol)
+        return self
